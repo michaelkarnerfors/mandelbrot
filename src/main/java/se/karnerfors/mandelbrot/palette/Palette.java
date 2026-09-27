@@ -2,12 +2,6 @@ package se.karnerfors.mandelbrot.palette;
 
 import java.awt.Color;
 
-/**
- * A cyclic palette built from a small set of anchor colors, each expanded into
- * a fixed number of blended shades. This is the exact color model the
- * original MandelbrotImage used (Red/White/Black x 16 shades, sqrt-blend);
- * it's lifted out here unchanged so Task 5 can build an editor around it.
- */
 public final class Palette {
 
     private final Color[] stops;
@@ -32,6 +26,16 @@ public final class Palette {
         return shadesPerSegment;
     }
 
+    /**
+     * The precomputed, fully gamma-blended gradient this palette cycles
+     * through ({@code stops.length * shadesPerSegment} entries). Used by the
+     * palette editor's preview strip so it shows the exact colors the real
+     * render uses, rather than a separately-computed approximation.
+     */
+    public Color[] gradient() {
+        return gradient.clone();
+    }
+
     private static Color[] buildGradient(Color[] stops, int shadesPerSegment) {
         Color[] gradient = new Color[stops.length * shadesPerSegment];
         for (int i = 0; i < stops.length; i++) {
@@ -43,10 +47,6 @@ public final class Palette {
         return gradient;
     }
 
-    /**
-     * @param smoothIterationCount continuous escape value (iterations - nu); only meaningful when escaped
-     * @param nu                   fractional correction term; only meaningful when escaped
-     */
     public Color colorFor(double smoothIterationCount, double nu) {
         int colourIndex = Math.floorMod((int) Math.floor(smoothIterationCount), gradient.length);
         return blend(gradient[colourIndex], gradient[(colourIndex + 1) % gradient.length],

@@ -5,6 +5,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
+import javax.swing.JDialog;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
@@ -14,7 +15,9 @@ import javax.swing.SwingUtilities;
 
 import se.karnerfors.mandelbrot.math.Complex;
 import se.karnerfors.mandelbrot.math.Viewport;
+import se.karnerfors.mandelbrot.palette.Palette;
 import se.karnerfors.mandelbrot.ui.FractalPanel;
+import se.karnerfors.mandelbrot.ui.PaletteEditorPanel;
 import se.karnerfors.mandelbrot.ui.RenderStatus;
 
 public class MandelbrotApp {
@@ -32,11 +35,23 @@ public class MandelbrotApp {
         JButton homeButton = new JButton("Home");
         JButton backButton = new JButton("Back");
         backButton.setEnabled(false);
+        JButton paletteButton = new JButton("Palette…");
 
         JToolBar toolBar = new JToolBar();
         toolBar.setFloatable(false);
         toolBar.add(homeButton);
         toolBar.add(backButton);
+        toolBar.add(paletteButton);
+
+        JDialog paletteDialog = new JDialog(frame, "Edit Palette", false);
+        paletteDialog.getContentPane().add(
+                new PaletteEditorPanel(Palette.classicRedWhiteBlack(), fractalPanel::setPalette));
+        paletteDialog.pack();
+        paletteButton.addActionListener(e -> {
+            paletteDialog.setLocationRelativeTo(frame);
+            paletteDialog.setVisible(true);
+            paletteDialog.toFront();
+        });
 
         JLabel hintLabel = new JLabel(" Left-drag: zoom to region   ·   Right-drag: pan   ·   Wheel: zoom ");
         JLabel infoLabel = new JLabel("", SwingConstants.RIGHT);
