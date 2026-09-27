@@ -1,7 +1,6 @@
 package se.karnerfors.mandelbrot.app;
 
 import java.awt.BorderLayout;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 import javax.swing.BorderFactory;
@@ -16,6 +15,7 @@ import javax.swing.SwingUtilities;
 import se.karnerfors.mandelbrot.math.Complex;
 import se.karnerfors.mandelbrot.math.Viewport;
 import se.karnerfors.mandelbrot.ui.FractalPanel;
+import se.karnerfors.mandelbrot.ui.RenderStatus;
 
 public class MandelbrotApp {
 
@@ -24,10 +24,10 @@ public class MandelbrotApp {
     }
 
     private static void createAndShowGui() {
-        JFrame frame = new JFrame("Mandelbrot");
-        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-
         FractalPanel fractalPanel = new FractalPanel(1000, 700);
+
+        JFrame frame = new JFrame("Mandelbrot — " + fractalPanel.getWorkerThreadCount() + " render threads");
+        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 
         JButton homeButton = new JButton("Home");
         JButton backButton = new JButton("Back");
@@ -46,7 +46,7 @@ public class MandelbrotApp {
         statusBar.add(infoLabel, BorderLayout.EAST);
         statusBar.setBorder(BorderFactory.createEmptyBorder(2, 8, 2, 8));
 
-        AtomicBoolean rendering = new AtomicBoolean(false);
+        AtomicReference<RenderStatus> latestStatus = new AtomicReference<>(new RenderStatus(false, 0.0, -1));
         AtomicReference<Complex> hoverPoint = new AtomicReference<>();
 
         Runnable refreshStatus = () -> {
@@ -58,8 +58,11 @@ public class MandelbrotApp {
                 text.append(String.format("Re: %.6f  Im: %.6f   ", hover.real, hover.imaginary));
             }
             text.append(String.format("Zoom: %.3e", viewport.zoom()));
-            if (rendering.get()) {
-                text.append("   Rendering…");
+            RenderStatus status = latestStatus.get();
+            if (status.rendering()) {
+                text.append(String.format("   Rendering… %.0f%%", status.progress() * 100));
+            } else if (status.lastRenderMillis() >= 0) {
+                text.append(String.format("   Last render: %.2fs", status.lastRenderMillis() / 1000.0));
             }
             text.append(' ');
             infoLabel.setText(text.toString());
@@ -69,8 +72,8 @@ public class MandelbrotApp {
         backButton.addActionListener(e -> fractalPanel.goBack());
 
         fractalPanel.setViewportListener(v -> SwingUtilities.invokeLater(refreshStatus));
-        fractalPanel.setRenderStateListener(isRendering -> SwingUtilities.invokeLater(() -> {
-            rendering.set(isRendering);
+        fractalPanel.setRenderStatusListener(status -> SwingUtilities.invokeLater(() -> {
+            latestStatus.set(status);
             refreshStatus.run();
         }));
         fractalPanel.setCursorMoveListener(point -> SwingUtilities.invokeLater(() -> {

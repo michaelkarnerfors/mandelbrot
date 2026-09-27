@@ -14,6 +14,9 @@ import java.awt.event.MouseMotionAdapter;
 import java.awt.image.BufferedImage;
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
 import java.util.function.Consumer;
 
 import javax.swing.JPanel;
@@ -34,9 +37,17 @@ import se.karnerfors.mandelbrot.render.Renderer;
  * rubber-band box to zoom to a region, right-drag pans, the wheel zooms at
  * the cursor. Every interaction updates {@link #currentViewport} immediately
  * and repaints using an affine transform of the last completed render, so
- * the view always feels instant; a background render then catches up and
- * replaces it with accurate pixels once done, guarded by a generation
- * counter so a superseded render is simply discarded.
+ * the view always feels instant; a background render then catches up.
+ *
+ * <p>Rendering itself is parallel and progressive: the target view is split
+ * into small tiles, computed across a fixed pool of {@code
+ * Runtime.availableProcessors()} worker threads, and each tile is painted in
+ * as soon as it lands rather than waiting for the whole image -- so tiles
+ * from different threads visibly pop in, in whatever order they finish. A
+ * render-generation counter guards both the whole-render promotion and each
+ * individual tile, so a view change mid-render discards stale results (and
+ * lets tiles still queued behind others skip their work entirely) instead of
+ * racing the new one.
  */
 public final class FractalPanel extends JPanel {
 
@@ -47,11 +58,20 @@ public final class FractalPanel extends JPanel {
     private static final int RESIZE_DEBOUNCE_MS = 150;
     private static final double WHEEL_ZOOM_STEP = 1.3;
 
+    /** Tile edge length in *final* (display) pixels; multiplied by the supersample factor for the actual grid tiling. */
+    private static final int TILE_SIZE_FINAL_PIXELS = 24;
+
     private enum Mode { NONE, SELECT, PAN }
 
     private Viewport currentViewport;
+
     private Viewport committedViewport;
     private BufferedImage renderedImage;
+
+    /** The render currently in flight: its target viewport and the image being filled in tile by tile, or null when idle. */
+    private Viewport inProgressViewport;
+    private BufferedImage progressiveImage;
+
     private IterationGrid lastGrid;
     private int lastSupersampleFactor = 1;
 
@@ -60,6 +80,11 @@ public final class FractalPanel extends JPanel {
 
     private volatile long renderGeneration = 0;
     private final Deque<Viewport> history = new ArrayDeque<>();
+
+    private final ExecutorService executor = newRenderExecutor();
+    private int totalTiles;
+    private int completedTiles;
+    private long renderStartNanos;
 
     private Mode mode = Mode.NONE;
     private int dragStartX, dragStartY;
@@ -70,7 +95,7 @@ public final class FractalPanel extends JPanel {
     private final Timer resizeRenderTimer;
 
     private Consumer<Viewport> viewportListener = v -> { };
-    private Consumer<Boolean> renderStateListener = r -> { };
+    private Consumer<RenderStatus> renderStatusListener = s -> { };
     private Consumer<Complex> cursorMoveListener = c -> { };
 
     public FractalPanel(int initialWidth, int initialHeight) {
@@ -174,6 +199,16 @@ public final class FractalPanel extends JPanel {
         });
     }
 
+    private static ExecutorService newRenderExecutor() {
+        int threads = Math.max(1, Runtime.getRuntime().availableProcessors());
+        ThreadFactory factory = runnable -> {
+            Thread thread = new Thread(runnable, "fractal-render-worker");
+            thread.setDaemon(true);
+            return thread;
+        };
+        return Executors.newFixedThreadPool(threads, factory);
+    }
+
     // --- public API -----------------------------------------------------
 
     public Viewport getCurrentViewport() {
@@ -182,6 +217,11 @@ public final class FractalPanel extends JPanel {
 
     public boolean hasHistory() {
         return !history.isEmpty();
+    }
+
+    /** Number of worker threads used to render tiles in parallel. */
+    public int getWorkerThreadCount() {
+        return Math.max(1, Runtime.getRuntime().availableProcessors());
     }
 
     public void goHome() {
@@ -221,8 +261,8 @@ public final class FractalPanel extends JPanel {
         this.viewportListener = listener != null ? listener : v -> { };
     }
 
-    public void setRenderStateListener(Consumer<Boolean> listener) {
-        this.renderStateListener = listener != null ? listener : r -> { };
+    public void setRenderStatusListener(Consumer<RenderStatus> listener) {
+        this.renderStatusListener = listener != null ? listener : s -> { };
     }
 
     public void setCursorMoveListener(Consumer<Complex> listener) {
@@ -288,18 +328,24 @@ public final class FractalPanel extends JPanel {
         final Palette activePalette = palette;
         final RenderSettings settings = renderSettings;
         final int factor = Math.max(1, settings.supersampleFactor());
+        final int oversampledTileSize = TILE_SIZE_FINAL_PIXELS * factor;
         final long myGeneration = ++renderGeneration;
 
-        renderStateListener.accept(true);
+        final BufferedImage myProgressiveImage = new BufferedImage(target.width(), target.height(), BufferedImage.TYPE_INT_ARGB);
+        this.inProgressViewport = target;
+        this.progressiveImage = myProgressiveImage;
+        this.totalTiles = tileCount(target.width(), target.height(), TILE_SIZE_FINAL_PIXELS);
+        this.completedTiles = 0;
+        this.renderStartNanos = System.nanoTime();
+        reportStatus(true, 0.0, -1);
 
-        SwingWorker<BufferedImage, Void> worker = new SwingWorker<>() {
-            private IterationGrid grid;
-
+        SwingWorker<IterationGrid, Void> worker = new SwingWorker<>() {
             @Override
-            protected BufferedImage doInBackground() {
-                grid = Renderer.computeGrid(target.supersampled(factor), settings);
-                BufferedImage colorized = Colorizer.colorize(grid, activePalette);
-                return Colorizer.downsample(colorized, factor);
+            protected IterationGrid doInBackground() throws Exception {
+                Viewport oversampled = target.supersampled(factor);
+                return Renderer.computeGridParallel(oversampled, settings, executor, oversampledTileSize,
+                        () -> myGeneration != renderGeneration,
+                        (grid, tile) -> onTileComplete(myGeneration, myProgressiveImage, activePalette, factor, grid, tile));
             }
 
             @Override
@@ -307,20 +353,63 @@ public final class FractalPanel extends JPanel {
                 if (myGeneration != renderGeneration) {
                     return; // superseded by a newer interaction -- discard
                 }
+                long elapsedMillis = (System.nanoTime() - renderStartNanos) / 1_000_000;
                 try {
-                    renderedImage = get();
-                    lastGrid = grid;
+                    lastGrid = get();
                     lastSupersampleFactor = factor;
+                    renderedImage = myProgressiveImage;
                     committedViewport = target;
+                    inProgressViewport = null;
+                    progressiveImage = null;
                 } catch (Exception ex) {
                     ex.printStackTrace();
                 } finally {
-                    renderStateListener.accept(false);
+                    reportStatus(false, 1.0, elapsedMillis);
                     repaint();
                 }
             }
         };
         worker.execute();
+    }
+
+    /**
+     * Runs on a render-worker thread once one tile's grid cells are filled.
+     * Colorizing and downsampling a single small tile is cheap and pure, so
+     * it happens right here; only the resulting handful of pixels get
+     * composited into {@code myProgressiveImage} (this specific render's own
+     * buffer, captured as a local by the caller -- never the field, which a
+     * newer render may have already replaced by the time a late tile from
+     * this one lands), via invokeLater, keeping every Swing-state mutation
+     * on the EDT.
+     */
+    private void onTileComplete(long myGeneration, BufferedImage myProgressiveImage, Palette activePalette, int factor,
+            IterationGrid grid, Rectangle oversampledTile) {
+        BufferedImage tileOversampled = Colorizer.colorizeRegion(grid, activePalette, oversampledTile);
+        BufferedImage tileFinal = Colorizer.downsample(tileOversampled, factor);
+        int finalX = oversampledTile.x / factor;
+        int finalY = oversampledTile.y / factor;
+
+        SwingUtilities.invokeLater(() -> {
+            if (myGeneration != renderGeneration) {
+                return; // superseded; drop this tile's result
+            }
+            Graphics2D g = myProgressiveImage.createGraphics();
+            g.drawImage(tileFinal, finalX, finalY, null);
+            g.dispose();
+            completedTiles++;
+            reportStatus(true, totalTiles == 0 ? 1.0 : (double) completedTiles / totalTiles, -1);
+            repaint(finalX, finalY, tileFinal.getWidth(), tileFinal.getHeight());
+        });
+    }
+
+    private void reportStatus(boolean rendering, double progress, long lastRenderMillis) {
+        renderStatusListener.accept(new RenderStatus(rendering, progress, lastRenderMillis));
+    }
+
+    private static int tileCount(int width, int height, int tileSize) {
+        int cols = (width + tileSize - 1) / tileSize;
+        int rows = (height + tileSize - 1) / tileSize;
+        return cols * rows;
     }
 
     /** The viewport we should visually represent right now, including any in-progress pan. */
@@ -335,22 +424,9 @@ public final class FractalPanel extends JPanel {
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
 
-        if (renderedImage != null && committedViewport != null) {
-            Viewport live = effectiveLiveViewport();
-            double s = live.zoom() / committedViewport.zoom();
-            double w = getWidth();
-            double h = getHeight();
-            double tx = w / 2.0 * (1 - s) + (committedViewport.center().real - live.center().real) * live.zoom();
-            double ty = h / 2.0 * (1 - s) + (committedViewport.center().imaginary - live.center().imaginary) * live.zoom();
-
-            Graphics2D imageGraphics = (Graphics2D) g.create();
-            imageGraphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
-                    RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-            imageGraphics.translate(tx, ty);
-            imageGraphics.scale(s, s);
-            imageGraphics.drawImage(renderedImage, 0, 0, null);
-            imageGraphics.dispose();
-        }
+        Viewport live = effectiveLiveViewport();
+        drawLayer((Graphics2D) g, renderedImage, committedViewport, live);
+        drawLayer((Graphics2D) g, progressiveImage, inProgressViewport, live);
 
         if (dragRect != null) {
             Graphics2D overlay = (Graphics2D) g.create();
@@ -360,5 +436,24 @@ public final class FractalPanel extends JPanel {
             overlay.draw(dragRect);
             overlay.dispose();
         }
+    }
+
+    /** Draws one image layer, transformed from the viewport it represents onto the viewport we're currently showing. */
+    private void drawLayer(Graphics2D g, BufferedImage image, Viewport imageViewport, Viewport live) {
+        if (image == null || imageViewport == null) {
+            return;
+        }
+        double s = live.zoom() / imageViewport.zoom();
+        double w = getWidth();
+        double h = getHeight();
+        double tx = w / 2.0 * (1 - s) + (imageViewport.center().real - live.center().real) * live.zoom();
+        double ty = h / 2.0 * (1 - s) + (imageViewport.center().imaginary - live.center().imaginary) * live.zoom();
+
+        Graphics2D layer = (Graphics2D) g.create();
+        layer.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        layer.translate(tx, ty);
+        layer.scale(s, s);
+        layer.drawImage(image, 0, 0, null);
+        layer.dispose();
     }
 }
