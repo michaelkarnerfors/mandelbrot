@@ -44,6 +44,7 @@ public class MandelbrotApp {
 
         paletteButton.addActionListener(e -> {
             JDialog paletteDialog = new JDialog(frame, "Edit Palette", false);
+            paletteDialog.setResizable(false);
             PaletteEditorPanel editor = new PaletteEditorPanel(fractalPanel.getPalette(), fractalPanel::setPalette,
                     () -> paletteDialog.setVisible(false));
             paletteDialog.getContentPane().add(editor);

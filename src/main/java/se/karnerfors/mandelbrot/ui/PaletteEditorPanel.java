@@ -102,7 +102,7 @@ public final class PaletteEditorPanel extends JPanel {
         capToPreferredWidth(cycleRow);
         southPanel.add(cycleRow);
 
-        JPanel buttonRow = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        JPanel buttonRow = new JPanel(new FlowLayout(FlowLayout.CENTER));
         cancelButton.addActionListener(e -> cancel());
         applyButton.addActionListener(e -> apply(false));
         doneButton.addActionListener(e -> apply(true));
