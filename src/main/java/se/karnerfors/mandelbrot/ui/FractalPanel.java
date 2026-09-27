@@ -53,6 +53,7 @@ public final class FractalPanel extends JPanel {
     private Viewport committedViewport;
     private BufferedImage renderedImage;
     private IterationGrid lastGrid;
+    private int lastSupersampleFactor = 1;
 
     private Palette palette = Palette.classicRedWhiteBlack();
     private RenderSettings renderSettings = RenderSettings.defaults();
@@ -205,7 +206,8 @@ public final class FractalPanel extends JPanel {
     public void setPalette(Palette newPalette) {
         this.palette = newPalette;
         if (lastGrid != null) {
-            renderedImage = Colorizer.colorize(lastGrid, palette);
+            BufferedImage colorized = Colorizer.colorize(lastGrid, palette);
+            renderedImage = Colorizer.downsample(colorized, lastSupersampleFactor);
             repaint();
         }
     }
@@ -285,6 +287,7 @@ public final class FractalPanel extends JPanel {
         final Viewport target = currentViewport;
         final Palette activePalette = palette;
         final RenderSettings settings = renderSettings;
+        final int factor = Math.max(1, settings.supersampleFactor());
         final long myGeneration = ++renderGeneration;
 
         renderStateListener.accept(true);
@@ -294,8 +297,9 @@ public final class FractalPanel extends JPanel {
 
             @Override
             protected BufferedImage doInBackground() {
-                grid = Renderer.computeGrid(target, settings);
-                return Colorizer.colorize(grid, activePalette);
+                grid = Renderer.computeGrid(target.supersampled(factor), settings);
+                BufferedImage colorized = Colorizer.colorize(grid, activePalette);
+                return Colorizer.downsample(colorized, factor);
             }
 
             @Override
@@ -306,6 +310,7 @@ public final class FractalPanel extends JPanel {
                 try {
                     renderedImage = get();
                     lastGrid = grid;
+                    lastSupersampleFactor = factor;
                     committedViewport = target;
                 } catch (Exception ex) {
                     ex.printStackTrace();

@@ -21,8 +21,10 @@ public class MandelbrotCli {
                 6553600.0D, 3840, 2160);
         RenderSettings settings = RenderSettings.defaults();
 
-        IterationGrid grid = Renderer.computeGrid(viewport, settings);
-        BufferedImage image = Colorizer.colorize(grid, Palette.classicRedWhiteBlack());
+        int factor = Math.max(1, settings.supersampleFactor());
+        IterationGrid grid = Renderer.computeGrid(viewport.supersampled(factor), settings);
+        BufferedImage colorized = Colorizer.colorize(grid, Palette.classicRedWhiteBlack());
+        BufferedImage image = Colorizer.downsample(colorized, factor);
 
         try {
             File outputfile = new File("saved.png");
