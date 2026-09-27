@@ -1,7 +1,6 @@
 /target/
 *.jpg
 *.png
-!src/main/resources/Acolyte.png
 .classpath
 .project
 .settings
