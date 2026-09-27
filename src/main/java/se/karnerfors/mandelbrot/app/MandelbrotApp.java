@@ -4,17 +4,20 @@ import java.awt.BorderLayout;
 import java.util.concurrent.atomic.AtomicReference;
 
 import javax.swing.BorderFactory;
+import javax.swing.ButtonGroup;
 import javax.swing.JButton;
 import javax.swing.JDialog;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
+import javax.swing.JRadioButton;
 import javax.swing.JToolBar;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 
 import se.karnerfors.mandelbrot.math.Complex;
 import se.karnerfors.mandelbrot.math.Viewport;
+import se.karnerfors.mandelbrot.render.RenderSettings;
 import se.karnerfors.mandelbrot.ui.FractalPanel;
 import se.karnerfors.mandelbrot.ui.PaletteEditorPanel;
 import se.karnerfors.mandelbrot.ui.RenderStatus;
@@ -41,6 +44,20 @@ public class MandelbrotApp {
         toolBar.add(homeButton);
         toolBar.add(backButton);
         toolBar.add(paletteButton);
+        toolBar.addSeparator();
+        toolBar.add(new JLabel("Supersample: "));
+
+        ButtonGroup supersampleGroup = new ButtonGroup();
+        int currentFactor = fractalPanel.getRenderSettings().supersampleFactor();
+        for (int factor : new int[] { 1, 2, 4, 9 }) {
+            JRadioButton radio = new JRadioButton(factor + "x", factor == currentFactor);
+            radio.addActionListener(e -> {
+                RenderSettings current = fractalPanel.getRenderSettings();
+                fractalPanel.setRenderSettings(new RenderSettings(current.maxIterations(), current.escapeRadius(), factor));
+            });
+            supersampleGroup.add(radio);
+            toolBar.add(radio);
+        }
 
         paletteButton.addActionListener(e -> {
             JDialog paletteDialog = new JDialog(frame, "Edit Palette", false);

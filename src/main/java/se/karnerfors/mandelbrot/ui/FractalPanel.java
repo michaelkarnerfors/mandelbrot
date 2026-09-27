@@ -223,6 +223,10 @@ public final class FractalPanel extends JPanel {
         return palette;
     }
 
+    public RenderSettings getRenderSettings() {
+        return renderSettings;
+    }
+
     /** Number of worker threads used to render tiles in parallel. */
     public int getWorkerThreadCount() {
         return Math.max(1, Runtime.getRuntime().availableProcessors());
