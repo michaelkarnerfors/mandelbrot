@@ -90,7 +90,8 @@ public final class PaletteEditorPanel extends JPanel {
         JPanel southPanel = new JPanel();
         southPanel.setLayout(new BoxLayout(southPanel, BoxLayout.Y_AXIS));
 
-        JPanel cycleRow = leftAlignedRow();
+        JPanel cycleRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 2));
+        cycleRow.setAlignmentX(Component.LEFT_ALIGNMENT);
         cycleRow.add(new JLabel("Shades per segment:"));
         JSpinner cycleLengthSpinner = new JSpinner(new SpinnerNumberModel(shadesPerSegment, 1, MAX_SHADES_PER_SEGMENT, 1));
         cycleLengthSpinner.addChangeListener(e -> {
@@ -179,7 +180,7 @@ public final class PaletteEditorPanel extends JPanel {
     }
 
     private JPanel buildStopRow(int index) {
-        JPanel row = leftAlignedRow();
+        JPanel row = centeredRow();
 
         JButton swatch = new JButton();
         swatch.setPreferredSize(new Dimension(SWATCH_WIDTH, ROW_HEIGHT));
@@ -228,7 +229,7 @@ public final class PaletteEditorPanel extends JPanel {
     }
 
     private JPanel buildAddRow() {
-        JPanel row = leftAlignedRow();
+        JPanel row = centeredRow();
         row.add(Box.createRigidArea(new Dimension(SWATCH_WIDTH, ROW_HEIGHT)));
         row.add(Box.createRigidArea(new Dimension(BUTTON_SIZE, BUTTON_SIZE)));
         row.add(Box.createRigidArea(new Dimension(BUTTON_SIZE, BUTTON_SIZE)));
@@ -246,10 +247,15 @@ public final class PaletteEditorPanel extends JPanel {
         return button;
     }
 
-    /** A tightly-packed, left-aligned row: no gaps at the container edges, small gaps between components. */
-    private static JPanel leftAlignedRow() {
+    /**
+     * A tightly-packed row (no gaps at its own edges, small gaps between its
+     * components) that -- combined with {@link #capToPreferredWidth} --
+     * centers itself horizontally in the stops column, giving each color row
+     * equal padding on both sides instead of hugging the left edge.
+     */
+    private static JPanel centeredRow() {
         JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 2));
-        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        row.setAlignmentX(Component.CENTER_ALIGNMENT);
         return row;
     }
 
