@@ -1,20 +1,30 @@
 package se.karnerfors.mandelbrot.app;
 
+import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
 
 import javax.imageio.ImageIO;
 
-import se.karnerfors.mandelbrot.render.MandelbrotImage;
+import se.karnerfors.mandelbrot.math.Complex;
+import se.karnerfors.mandelbrot.math.Viewport;
+import se.karnerfors.mandelbrot.palette.Palette;
+import se.karnerfors.mandelbrot.render.Colorizer;
+import se.karnerfors.mandelbrot.render.IterationGrid;
+import se.karnerfors.mandelbrot.render.RenderSettings;
+import se.karnerfors.mandelbrot.render.Renderer;
 
 public class MandelbrotCli {
     public static void main(String[] args) {
 
-        MandelbrotImage image = new MandelbrotImage(3840, 2160);
-        image.render(-0.7602490234375D, -0.080498046875D, 6553600.0D);
+        Viewport viewport = new Viewport(Complex.fromCartesian(-0.7602490234375D, -0.080498046875D),
+                6553600.0D, 3840, 2160);
+        RenderSettings settings = RenderSettings.defaults();
+
+        IterationGrid grid = Renderer.computeGrid(viewport, settings);
+        BufferedImage image = Colorizer.colorize(grid, Palette.classicRedWhiteBlack());
 
         try {
-            // retrieve image
             File outputfile = new File("saved.png");
             ImageIO.write(image, "png", outputfile);
         } catch (IOException e) {
