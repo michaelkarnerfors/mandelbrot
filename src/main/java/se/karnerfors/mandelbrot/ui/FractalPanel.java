@@ -219,6 +219,10 @@ public final class FractalPanel extends JPanel {
         return !history.isEmpty();
     }
 
+    public Palette getPalette() {
+        return palette;
+    }
+
     /** Number of worker threads used to render tiles in parallel. */
     public int getWorkerThreadCount() {
         return Math.max(1, Runtime.getRuntime().availableProcessors());
@@ -242,14 +246,60 @@ public final class FractalPanel extends JPanel {
         submitRender();
     }
 
-    /** Recolors the current render instantly from cached iteration data -- no recompute. */
+    /** Recolors the current render from cached iteration data -- no recompute. */
     public void setPalette(Palette newPalette) {
+        setPalette(newPalette, null);
+    }
+
+    /**
+     * Same as {@link #setPalette(Palette)}, but colorizing and downsampling
+     * the (possibly heavily supersampled) full-size cached grid runs on a
+     * background thread rather than the EDT -- doing that synchronously was
+     * visibly freezing the UI on anything but a small/low-AA render. Guarded
+     * by the same render-generation counter as a full render, so a recolor
+     * that finishes after a newer viewport render has already landed is
+     * dropped instead of clobbering it with stale colors.
+     *
+     * <p>{@code onComplete}, if non-null, runs on the EDT once the recolor
+     * has either landed or been dropped as stale -- so a caller like the
+     * palette editor knows when it's safe to re-enable its own controls.
+     */
+    public void setPalette(Palette newPalette, Runnable onComplete) {
         this.palette = newPalette;
-        if (lastGrid != null) {
-            BufferedImage colorized = Colorizer.colorize(lastGrid, palette);
-            renderedImage = Colorizer.downsample(colorized, lastSupersampleFactor);
-            repaint();
+        if (lastGrid == null) {
+            if (onComplete != null) {
+                onComplete.run();
+            }
+            return;
         }
+
+        final IterationGrid gridSnapshot = lastGrid;
+        final int factorSnapshot = lastSupersampleFactor;
+        final long myGeneration = renderGeneration;
+
+        SwingWorker<BufferedImage, Void> worker = new SwingWorker<>() {
+            @Override
+            protected BufferedImage doInBackground() {
+                BufferedImage colorized = Colorizer.colorize(gridSnapshot, newPalette);
+                return Colorizer.downsample(colorized, factorSnapshot);
+            }
+
+            @Override
+            protected void done() {
+                if (myGeneration == renderGeneration) {
+                    try {
+                        renderedImage = get();
+                        repaint();
+                    } catch (Exception ex) {
+                        ex.printStackTrace();
+                    }
+                }
+                if (onComplete != null) {
+                    onComplete.run();
+                }
+            }
+        };
+        worker.execute();
     }
 
     public void setRenderSettings(RenderSettings newSettings) {

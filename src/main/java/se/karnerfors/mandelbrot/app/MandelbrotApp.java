@@ -15,7 +15,6 @@ import javax.swing.SwingUtilities;
 
 import se.karnerfors.mandelbrot.math.Complex;
 import se.karnerfors.mandelbrot.math.Viewport;
-import se.karnerfors.mandelbrot.palette.Palette;
 import se.karnerfors.mandelbrot.ui.FractalPanel;
 import se.karnerfors.mandelbrot.ui.PaletteEditorPanel;
 import se.karnerfors.mandelbrot.ui.RenderStatus;
@@ -43,14 +42,14 @@ public class MandelbrotApp {
         toolBar.add(backButton);
         toolBar.add(paletteButton);
 
-        JDialog paletteDialog = new JDialog(frame, "Edit Palette", false);
-        paletteDialog.getContentPane().add(
-                new PaletteEditorPanel(Palette.classicRedWhiteBlack(), fractalPanel::setPalette));
-        paletteDialog.pack();
         paletteButton.addActionListener(e -> {
+            JDialog paletteDialog = new JDialog(frame, "Edit Palette", false);
+            PaletteEditorPanel editor = new PaletteEditorPanel(fractalPanel.getPalette(), fractalPanel::setPalette,
+                    () -> paletteDialog.setVisible(false));
+            paletteDialog.getContentPane().add(editor);
+            paletteDialog.pack();
             paletteDialog.setLocationRelativeTo(frame);
             paletteDialog.setVisible(true);
-            paletteDialog.toFront();
         });
 
         JLabel hintLabel = new JLabel(" Left-drag: zoom to region   ·   Right-drag: pan   ·   Wheel: zoom ");
