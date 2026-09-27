@@ -8,7 +8,10 @@ import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Graphics;
 import java.awt.Insets;
+import java.awt.Window;
+import java.awt.event.KeyEvent;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.function.BiConsumer;
@@ -17,10 +20,14 @@ import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.JButton;
 import javax.swing.JColorChooser;
+import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JSpinner;
+import javax.swing.KeyStroke;
+import javax.swing.RootPaneContainer;
 import javax.swing.SpinnerNumberModel;
+import javax.swing.SwingUtilities;
 import javax.swing.border.EmptyBorder;
 
 import se.karnerfors.mandelbrot.palette.Palette;
@@ -42,7 +49,7 @@ public final class PaletteEditorPanel extends JPanel {
     private static final int MIN_STOPS = 2;
     private static final int MAX_SHADES_PER_SEGMENT = 200;
     private static final int SWATCH_WIDTH = 48;
-    private static final int SWATCH_HEIGHT = 24;
+    private static final int ROW_HEIGHT = 28;
     private static final int BUTTON_SIZE = 28;
 
     private final Palette originalPalette;
@@ -50,15 +57,22 @@ public final class PaletteEditorPanel extends JPanel {
     private int shadesPerSegment;
     private boolean appliedDuringSession = false;
 
+    /** The palette last pushed to the fractal (or the original, if never applied) -- Apply is disabled while nothing differs from this. */
+    private Palette lastAppliedPalette;
+
     /** Pushes a palette to the live fractal; the Runnable, once called, signals the recolor has landed (or been dropped). */
     private final BiConsumer<Palette, Runnable> applyPalette;
     private final Runnable onClose;
 
     private final GradientPreview preview = new GradientPreview();
     private final JPanel stopsListPanel = new JPanel();
+    private final JButton cancelButton = new JButton("Cancel");
+    private final JButton applyButton = new JButton("Apply");
+    private final JButton doneButton = new JButton("Done");
 
     public PaletteEditorPanel(Palette initialPalette, BiConsumer<Palette, Runnable> applyPalette, Runnable onClose) {
         this.originalPalette = initialPalette;
+        this.lastAppliedPalette = initialPalette;
         this.applyPalette = applyPalette;
         this.onClose = onClose;
         Collections.addAll(stops, initialPalette.stops());
@@ -67,7 +81,7 @@ public final class PaletteEditorPanel extends JPanel {
         setLayout(new BorderLayout(8, 8));
         setBorder(new EmptyBorder(8, 8, 8, 8));
 
-        preview.setPreferredSize(new Dimension(320, 32));
+        preview.setPreferredSize(new Dimension(200, ROW_HEIGHT));
         add(preview, BorderLayout.NORTH);
 
         stopsListPanel.setLayout(new BoxLayout(stopsListPanel, BoxLayout.Y_AXIS));
@@ -76,20 +90,18 @@ public final class PaletteEditorPanel extends JPanel {
         JPanel southPanel = new JPanel();
         southPanel.setLayout(new BoxLayout(southPanel, BoxLayout.Y_AXIS));
 
-        JPanel cycleRow = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        JPanel cycleRow = leftAlignedRow();
         cycleRow.add(new JLabel("Shades per segment:"));
         JSpinner cycleLengthSpinner = new JSpinner(new SpinnerNumberModel(shadesPerSegment, 1, MAX_SHADES_PER_SEGMENT, 1));
         cycleLengthSpinner.addChangeListener(e -> {
             shadesPerSegment = (Integer) cycleLengthSpinner.getValue();
-            updatePreview();
+            onEdited();
         });
         cycleRow.add(cycleLengthSpinner);
+        capToPreferredWidth(cycleRow);
         southPanel.add(cycleRow);
 
         JPanel buttonRow = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        JButton cancelButton = new JButton("Cancel");
-        JButton applyButton = new JButton("Apply");
-        JButton doneButton = new JButton("Done");
         cancelButton.addActionListener(e -> cancel());
         applyButton.addActionListener(e -> apply(false));
         doneButton.addActionListener(e -> apply(true));
@@ -102,18 +114,34 @@ public final class PaletteEditorPanel extends JPanel {
 
         rebuildStopsList();
         preview.setPalette(initialPalette);
+        updateApplyEnabled();
+    }
+
+    @Override
+    public void addNotify() {
+        super.addNotify();
+        Window window = SwingUtilities.getWindowAncestor(this);
+        if (window instanceof RootPaneContainer rootPaneContainer) {
+            rootPaneContainer.getRootPane().setDefaultButton(doneButton);
+            rootPaneContainer.getRootPane().registerKeyboardAction(e -> cancel(),
+                    KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), JComponent.WHEN_IN_FOCUSED_WINDOW);
+        }
     }
 
     private void apply(boolean thenClose) {
         Palette palette = currentPalette();
         appliedDuringSession = true;
+        lastAppliedPalette = palette;
         if (thenClose) {
             // Closing anyway -- no need to disable-and-wait, the recolor finishes in the background regardless.
             applyPalette.accept(palette, null);
             onClose.run();
         } else {
             setEnabledRecursive(this, false);
-            applyPalette.accept(palette, () -> setEnabledRecursive(this, true));
+            applyPalette.accept(palette, () -> {
+                setEnabledRecursive(this, true);
+                updateApplyEnabled();
+            });
         }
     }
 
@@ -132,7 +160,7 @@ public final class PaletteEditorPanel extends JPanel {
                 (last.getBlue() + first.getBlue()) / 2);
         stops.add(midpoint);
         rebuildStopsList();
-        updatePreview();
+        onEdited();
     }
 
     private void rebuildStopsList() {
@@ -144,17 +172,17 @@ public final class PaletteEditorPanel extends JPanel {
         stopsListPanel.revalidate();
         stopsListPanel.repaint();
 
-        java.awt.Window window = javax.swing.SwingUtilities.getWindowAncestor(this);
+        Window window = SwingUtilities.getWindowAncestor(this);
         if (window != null) {
             window.pack();
         }
     }
 
     private JPanel buildStopRow(int index) {
-        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 2));
+        JPanel row = leftAlignedRow();
 
         JButton swatch = new JButton();
-        swatch.setPreferredSize(new Dimension(SWATCH_WIDTH, SWATCH_HEIGHT));
+        swatch.setPreferredSize(new Dimension(SWATCH_WIDTH, ROW_HEIGHT));
         swatch.setBackground(stops.get(index));
         swatch.setOpaque(true);
         swatch.setBorderPainted(false);
@@ -163,7 +191,7 @@ public final class PaletteEditorPanel extends JPanel {
             if (chosen != null) {
                 stops.set(index, chosen);
                 swatch.setBackground(chosen);
-                updatePreview();
+                onEdited();
             }
         });
         row.add(swatch);
@@ -173,7 +201,7 @@ public final class PaletteEditorPanel extends JPanel {
         up.addActionListener(e -> {
             Collections.swap(stops, index, index - 1);
             rebuildStopsList();
-            updatePreview();
+            onEdited();
         });
         row.add(up);
 
@@ -182,7 +210,7 @@ public final class PaletteEditorPanel extends JPanel {
         down.addActionListener(e -> {
             Collections.swap(stops, index, index + 1);
             rebuildStopsList();
-            updatePreview();
+            onEdited();
         });
         row.add(down);
 
@@ -191,21 +219,23 @@ public final class PaletteEditorPanel extends JPanel {
         minus.addActionListener(e -> {
             stops.remove(index);
             rebuildStopsList();
-            updatePreview();
+            onEdited();
         });
         row.add(minus);
 
+        capToPreferredWidth(row);
         return row;
     }
 
     private JPanel buildAddRow() {
-        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 2));
-        row.add(Box.createRigidArea(new Dimension(SWATCH_WIDTH, SWATCH_HEIGHT)));
+        JPanel row = leftAlignedRow();
+        row.add(Box.createRigidArea(new Dimension(SWATCH_WIDTH, ROW_HEIGHT)));
         row.add(Box.createRigidArea(new Dimension(BUTTON_SIZE, BUTTON_SIZE)));
         row.add(Box.createRigidArea(new Dimension(BUTTON_SIZE, BUTTON_SIZE)));
         JButton plus = smallButton("+");
         plus.addActionListener(e -> addStop());
         row.add(plus);
+        capToPreferredWidth(row);
         return row;
     }
 
@@ -216,12 +246,39 @@ public final class PaletteEditorPanel extends JPanel {
         return button;
     }
 
+    /** A tightly-packed, left-aligned row: no gaps at the container edges, small gaps between components. */
+    private static JPanel leftAlignedRow() {
+        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 2));
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        return row;
+    }
+
+    /**
+     * Stops a FlowLayout-based row from being stretched to the full column
+     * width by the surrounding Y_AXIS BoxLayout -- FlowLayout doesn't cap a
+     * panel's maximum size, so without this every row spreads out to match
+     * the widest sibling (the preview strip), leaving a wide gap of dead
+     * space to the right of each row's buttons.
+     */
+    private static void capToPreferredWidth(JPanel row) {
+        row.setMaximumSize(row.getPreferredSize());
+    }
+
     private Palette currentPalette() {
         return new Palette(stops.toArray(new Color[0]), shadesPerSegment);
     }
 
-    private void updatePreview() {
+    private void onEdited() {
         preview.setPalette(currentPalette());
+        updateApplyEnabled();
+    }
+
+    private void updateApplyEnabled() {
+        applyButton.setEnabled(!palettesEqual(currentPalette(), lastAppliedPalette));
+    }
+
+    private static boolean palettesEqual(Palette a, Palette b) {
+        return a.shadesPerSegment() == b.shadesPerSegment() && Arrays.equals(a.stops(), b.stops());
     }
 
     private static void setEnabledRecursive(Component component, boolean enabled) {
