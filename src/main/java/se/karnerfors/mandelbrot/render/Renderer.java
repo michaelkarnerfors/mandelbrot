@@ -99,7 +99,8 @@ public final class Renderer {
         return grid;
     }
 
-    private static List<Rectangle> computeTiles(int width, int height, int tileSize) {
+    /** Widened from package-private to public so {@link ImageExporter} can reuse the same tiling logic. */
+    public static List<Rectangle> computeTiles(int width, int height, int tileSize) {
         List<Rectangle> tiles = new ArrayList<>();
         for (int y = 0; y < height; y += tileSize) {
             int h = Math.min(tileSize, height - y);
