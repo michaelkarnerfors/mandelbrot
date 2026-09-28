@@ -50,3 +50,7 @@ src/main/java/se/karnerfors/mandelbrot/
 Rendering has two stages. First, `Renderer` computes escape-iteration counts into an `IterationGrid`. Then `Colorizer` maps those counts through a `Palette` and box-filters the supersampled result down to the output size. Because the stages are separate, changing the palette recolors the existing grid without recomputing the fractal.
 
 Default render settings (max iterations, escape radius, supersample factor) are in `RenderSettings.defaults()`.
+
+## License
+
+Released under the [MIT License](LICENSE).
