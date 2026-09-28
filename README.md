@@ -2,6 +2,8 @@
 
 An interactive Mandelbrot set explorer written in Java (Swing), with multithreaded tiled rendering, supersampled antialiasing, a live palette editor, and high-resolution export to PNG.
 
+![Mandelbrot explorer showing a deep zoom rendered at 4x supersampling](Screenshot.png)
+
 ## Features
 
 - **Interactive navigation**: left-drag to zoom to a region, right-drag to pan, mouse wheel to zoom at the cursor. **Home** resets the view and **Back** steps through your zoom history.

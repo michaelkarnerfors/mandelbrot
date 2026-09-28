@@ -1,6 +1,7 @@
 /target/
 *.jpg
 *.png
+!/Screenshot.png
 .classpath
 .project
 .settings
