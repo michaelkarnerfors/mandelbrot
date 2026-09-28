@@ -7,6 +7,6 @@ package se.karnerfors.mandelbrot.render;
 public record RenderSettings(int maxIterations, double escapeRadius, int supersampleFactor) {
 
     public static RenderSettings defaults() {
-        return new RenderSettings(1000, 256.0, 4);
+        return new RenderSettings(1000, 256.0, 1);
     }
 }
