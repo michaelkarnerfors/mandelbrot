@@ -26,6 +26,7 @@ import javax.swing.Timer;
 
 import se.karnerfors.mandelbrot.math.Complex;
 import se.karnerfors.mandelbrot.math.Viewport;
+import se.karnerfors.mandelbrot.io.MandelbrotConfig;
 import se.karnerfors.mandelbrot.palette.Palette;
 import se.karnerfors.mandelbrot.render.Colorizer;
 import se.karnerfors.mandelbrot.render.IterationGrid;
@@ -94,9 +95,9 @@ public final class FractalPanel extends JPanel {
     private final Timer wheelRenderTimer;
     private final Timer resizeRenderTimer;
 
-    private Consumer<Viewport> viewportListener = v -> { };
-    private Consumer<RenderStatus> renderStatusListener = s -> { };
-    private Consumer<Complex> cursorMoveListener = c -> { };
+    private Consumer<Viewport> viewportListener = _ -> { };
+    private Consumer<RenderStatus> renderStatusListener = _ -> { };
+    private Consumer<Complex> cursorMoveListener = _ -> { };
 
     public FractalPanel(int initialWidth, int initialHeight) {
         setPreferredSize(new java.awt.Dimension(initialWidth, initialHeight));
@@ -105,9 +106,9 @@ public final class FractalPanel extends JPanel {
 
         this.currentViewport = Viewport.classicFullView(initialWidth, initialHeight);
 
-        this.wheelRenderTimer = new Timer(WHEEL_DEBOUNCE_MS, e -> submitRender());
+        this.wheelRenderTimer = new Timer(WHEEL_DEBOUNCE_MS, _ -> submitRender());
         this.wheelRenderTimer.setRepeats(false);
-        this.resizeRenderTimer = new Timer(RESIZE_DEBOUNCE_MS, e -> submitRender());
+        this.resizeRenderTimer = new Timer(RESIZE_DEBOUNCE_MS, _ -> submitRender());
         this.resizeRenderTimer.setRepeats(false);
 
         MouseAdapter dragHandler = new MouseAdapter() {
@@ -311,16 +312,32 @@ public final class FractalPanel extends JPanel {
         submitRender();
     }
 
+    /**
+     * Applies a loaded {@link MandelbrotConfig}: jumps to its center/zoom
+     * (sized to this panel's *current* width/height -- window size is
+     * deliberately never part of a saved config) and switches to its
+     * palette, then triggers a fresh render. The previous viewport is
+     * pushed onto history so Back still works afterwards.
+     */
+    public void applyConfig(MandelbrotConfig config) {
+        history.push(currentViewport);
+        currentViewport = config.toViewport(getWidth(), getHeight());
+        this.palette = config.toPalette();
+        notifyViewportChanged();
+        repaint();
+        submitRender();
+    }
+
     public void setViewportListener(Consumer<Viewport> listener) {
-        this.viewportListener = listener != null ? listener : v -> { };
+        this.viewportListener = listener != null ? listener : _ -> { };
     }
 
     public void setRenderStatusListener(Consumer<RenderStatus> listener) {
-        this.renderStatusListener = listener != null ? listener : s -> { };
+        this.renderStatusListener = listener != null ? listener : _ -> { };
     }
 
     public void setCursorMoveListener(Consumer<Complex> listener) {
-        this.cursorMoveListener = listener != null ? listener : c -> { };
+        this.cursorMoveListener = listener != null ? listener : _ -> { };
     }
 
     // --- interaction helpers ---------------------------------------------

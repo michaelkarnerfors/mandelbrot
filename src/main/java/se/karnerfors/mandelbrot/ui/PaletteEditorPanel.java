@@ -94,7 +94,7 @@ public final class PaletteEditorPanel extends JPanel {
         cycleRow.setAlignmentX(Component.LEFT_ALIGNMENT);
         cycleRow.add(new JLabel("Shades per segment:"));
         JSpinner cycleLengthSpinner = new JSpinner(new SpinnerNumberModel(shadesPerSegment, 1, MAX_SHADES_PER_SEGMENT, 1));
-        cycleLengthSpinner.addChangeListener(e -> {
+        cycleLengthSpinner.addChangeListener(_ -> {
             shadesPerSegment = (Integer) cycleLengthSpinner.getValue();
             onEdited();
         });
@@ -103,9 +103,9 @@ public final class PaletteEditorPanel extends JPanel {
         southPanel.add(cycleRow);
 
         JPanel buttonRow = new JPanel(new FlowLayout(FlowLayout.CENTER));
-        cancelButton.addActionListener(e -> cancel());
-        applyButton.addActionListener(e -> apply(false));
-        doneButton.addActionListener(e -> apply(true));
+        cancelButton.addActionListener(_ -> cancel());
+        applyButton.addActionListener(_ -> apply(false));
+        doneButton.addActionListener(_ -> apply(true));
         buttonRow.add(cancelButton);
         buttonRow.add(applyButton);
         buttonRow.add(doneButton);
@@ -124,7 +124,7 @@ public final class PaletteEditorPanel extends JPanel {
         Window window = SwingUtilities.getWindowAncestor(this);
         if (window instanceof RootPaneContainer rootPaneContainer) {
             rootPaneContainer.getRootPane().setDefaultButton(doneButton);
-            rootPaneContainer.getRootPane().registerKeyboardAction(e -> cancel(),
+            rootPaneContainer.getRootPane().registerKeyboardAction(_ -> cancel(),
                     KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), JComponent.WHEN_IN_FOCUSED_WINDOW);
         }
     }
@@ -187,7 +187,7 @@ public final class PaletteEditorPanel extends JPanel {
         swatch.setBackground(stops.get(index));
         swatch.setOpaque(true);
         swatch.setBorderPainted(false);
-        swatch.addActionListener(e -> {
+        swatch.addActionListener(_ -> {
             Color chosen = JColorChooser.showDialog(this, "Choose stop color", stops.get(index));
             if (chosen != null) {
                 stops.set(index, chosen);
@@ -199,7 +199,7 @@ public final class PaletteEditorPanel extends JPanel {
 
         JButton up = smallButton("↑");
         up.setEnabled(index > 0);
-        up.addActionListener(e -> {
+        up.addActionListener(_ -> {
             Collections.swap(stops, index, index - 1);
             rebuildStopsList();
             onEdited();
@@ -208,7 +208,7 @@ public final class PaletteEditorPanel extends JPanel {
 
         JButton down = smallButton("↓");
         down.setEnabled(index < stops.size() - 1);
-        down.addActionListener(e -> {
+        down.addActionListener(_ -> {
             Collections.swap(stops, index, index + 1);
             rebuildStopsList();
             onEdited();
@@ -217,7 +217,7 @@ public final class PaletteEditorPanel extends JPanel {
 
         JButton minus = smallButton("-");
         minus.setEnabled(stops.size() > MIN_STOPS);
-        minus.addActionListener(e -> {
+        minus.addActionListener(_ -> {
             stops.remove(index);
             rebuildStopsList();
             onEdited();
@@ -234,7 +234,7 @@ public final class PaletteEditorPanel extends JPanel {
         row.add(Box.createRigidArea(new Dimension(BUTTON_SIZE, BUTTON_SIZE)));
         row.add(Box.createRigidArea(new Dimension(BUTTON_SIZE, BUTTON_SIZE)));
         JButton plus = smallButton("+");
-        plus.addActionListener(e -> addStop());
+        plus.addActionListener(_ -> addStop());
         row.add(plus);
         capToPreferredWidth(row);
         return row;

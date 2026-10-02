@@ -1,7 +1,11 @@
 package se.karnerfors.mandelbrot.ui;
 
+import java.awt.BorderLayout;
 import java.awt.Component;
 import java.awt.FlowLayout;
+import java.awt.GridBagConstraints;
+import java.awt.GridBagLayout;
+import java.awt.Insets;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
@@ -11,9 +15,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import javax.imageio.ImageIO;
-import javax.swing.Box;
-import javax.swing.BoxLayout;
 import javax.swing.ButtonGroup;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
@@ -28,6 +29,8 @@ import javax.swing.SwingWorker;
 import javax.swing.border.EmptyBorder;
 import javax.swing.filechooser.FileNameExtensionFilter;
 
+import se.karnerfors.mandelbrot.io.MandelbrotConfig;
+import se.karnerfors.mandelbrot.io.MandelbrotConfigIO;
 import se.karnerfors.mandelbrot.math.Complex;
 import se.karnerfors.mandelbrot.math.Viewport;
 import se.karnerfors.mandelbrot.palette.Palette;
@@ -93,7 +96,7 @@ public final class ExportPanel extends JPanel {
         this.palette = palette;
         this.onClose = onClose;
 
-        setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
+        setLayout(new BorderLayout(0, 8));
         setBorder(new EmptyBorder(8, 8, 8, 8));
 
         resolutionCombo.addItem(new Resolution("Current (" + currentWidth + " × " + currentHeight + ")",
@@ -101,50 +104,53 @@ public final class ExportPanel extends JPanel {
         for (Resolution resolution : PRESET_RESOLUTIONS) {
             resolutionCombo.addItem(resolution);
         }
-        add(labeledRow("Resolution:", resolutionCombo));
 
-        JPanel supersampleRow = leftRow();
-        supersampleRow.add(new JLabel("Supersample:"));
+        JPanel supersamplePanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
         ButtonGroup supersampleGroup = new ButtonGroup();
         int currentFactor = currentSettings.supersampleFactor();
         for (int i = 0; i < SUPERSAMPLE_FACTORS.length; i++) {
             int factor = SUPERSAMPLE_FACTORS[i];
             JRadioButton radio = new JRadioButton(factor + "x", factor == currentFactor);
             supersampleGroup.add(radio);
-            supersampleRow.add(radio);
+            supersamplePanel.add(radio);
             supersampleRadios[i] = radio;
         }
-        add(capToPreferredWidth(supersampleRow));
 
         Complex center = currentViewport.center();
         reField.setText(Double.toString(center.real));
         imField.setText(Double.toString(center.imaginary));
         zoomField.setText(Double.toString(currentViewport.zoom()));
-        add(labeledRow("Re:", reField));
-        add(labeledRow("Im:", imField));
-        add(labeledRow("Zoom:", zoomField));
 
         fileField.setEditable(false);
-        browseButton.addActionListener(e -> chooseFile());
-        JPanel fileRow = leftRow();
-        fileRow.add(new JLabel("Output file:"));
-        fileRow.add(fileField);
-        fileRow.add(browseButton);
-        add(capToPreferredWidth(fileRow));
+        browseButton.addActionListener(_ -> chooseFile());
+        JPanel filePanel = new JPanel(new BorderLayout(4, 0));
+        filePanel.add(fileField, BorderLayout.CENTER);
+        filePanel.add(browseButton, BorderLayout.EAST);
 
-        add(Box.createVerticalStrut(6));
+        // Form: label column + field column. GridBagLayout sizes every row from the same two
+        // columns, so rows can't wrap or overlap no matter how wide the dialog ends up.
+        JPanel form = new JPanel(new GridBagLayout());
+        int row = 0;
+        addFormRow(form, row++, "Resolution:", resolutionCombo);
+        addFormRow(form, row++, "Supersample:", supersamplePanel);
+        addFormRow(form, row++, "Re:", reField);
+        addFormRow(form, row++, "Im:", imField);
+        addFormRow(form, row++, "Zoom:", zoomField);
+        addFormRow(form, row++, "Output file:", filePanel);
+        add(form, BorderLayout.CENTER);
+
         progressBar.setStringPainted(false);
-        add(progressBar);
-        statusLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
-        add(statusLabel);
-        add(Box.createVerticalStrut(6));
-
         JPanel buttonRow = new JPanel(new FlowLayout(FlowLayout.CENTER));
-        cancelButton.addActionListener(e -> onCancelClicked());
-        renderButton.addActionListener(e -> startRender());
+        cancelButton.addActionListener(_ -> onCancelClicked());
+        renderButton.addActionListener(_ -> startRender());
         buttonRow.add(cancelButton);
         buttonRow.add(renderButton);
-        add(buttonRow);
+
+        JPanel footer = new JPanel(new BorderLayout(0, 4));
+        footer.add(progressBar, BorderLayout.NORTH);
+        footer.add(statusLabel, BorderLayout.CENTER);
+        footer.add(buttonRow, BorderLayout.SOUTH);
+        add(footer, BorderLayout.SOUTH);
     }
 
     private void onCancelClicked() {
@@ -229,7 +235,8 @@ public final class ExportPanel extends JPanel {
                 }
                 try {
                     BufferedImage image = get();
-                    ImageIO.write(image, "png", outputFile);
+                    MandelbrotConfig config = MandelbrotConfig.capture(target, palette);
+                    MandelbrotConfigIO.writePng(outputFile, image, config);
                     progressBar.setValue(100);
                     statusLabel.setText("Saved to " + outputFile.getAbsolutePath());
                 } catch (IOException | java.util.concurrent.ExecutionException | InterruptedException ex) {
@@ -290,23 +297,21 @@ public final class ExportPanel extends JPanel {
         return Executors.newFixedThreadPool(threads, factory);
     }
 
-    private static JPanel labeledRow(String label, Component field) {
-        JPanel row = leftRow();
-        row.add(new JLabel(label));
-        row.add(field);
-        return capToPreferredWidth(row);
-    }
+    private static void addFormRow(JPanel form, int row, String label, Component field) {
+        GridBagConstraints labelConstraints = new GridBagConstraints();
+        labelConstraints.gridx = 0;
+        labelConstraints.gridy = row;
+        labelConstraints.anchor = GridBagConstraints.LINE_START;
+        labelConstraints.insets = new Insets(3, 0, 3, 8);
+        form.add(new JLabel(label), labelConstraints);
 
-    private static JPanel leftRow() {
-        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 2));
-        row.setAlignmentX(Component.LEFT_ALIGNMENT);
-        return row;
-    }
-
-    /** Stops a FlowLayout row from being stretched full-width by the surrounding Y_AXIS BoxLayout. */
-    private static JPanel capToPreferredWidth(JPanel row) {
-        row.setMaximumSize(row.getPreferredSize());
-        return row;
+        GridBagConstraints fieldConstraints = new GridBagConstraints();
+        fieldConstraints.gridx = 1;
+        fieldConstraints.gridy = row;
+        fieldConstraints.weightx = 1.0;
+        fieldConstraints.fill = GridBagConstraints.HORIZONTAL;
+        fieldConstraints.insets = new Insets(3, 0, 3, 0);
+        form.add(field, fieldConstraints);
     }
 
     private record Resolution(String label, int width, int height) {

@@ -1,8 +1,14 @@
 package se.karnerfors.mandelbrot.palette;
 
 import java.awt.Color;
+import java.util.Arrays;
+import java.util.List;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 public final class Palette {
+
+    private static final ObjectMapper JSON = new ObjectMapper();
 
     private final Color[] stops;
     private final int shadesPerSegment;
@@ -69,5 +75,36 @@ public final class Palette {
         float b = (float) Math.sqrt((1 - balance) * b1 * b1 + balance * b2 * b2);
 
         return new Color(r, g, b);
+    }
+
+    /**
+     * Renders this Palette as a JSON object string, e.g.
+     * {@code {"stops":[{"r":255,"g":0,"b":0},...],"shadesPerSegment":16}}.
+     */
+    @Override
+    public String toString() {
+        try {
+            return JSON.writeValueAsString(new PaletteView(stops, shadesPerSegment));
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to serialize Palette to JSON", e);
+        }
+    }
+
+    /**
+     * Jackson-friendly view of a Palette's exported state. Kept private and
+     * separate from Palette itself so the derived {@code gradient} field
+     * never leaks into the JSON, and so {@link Color} (not bean-friendly for
+     * Jackson) doesn't need to be serialized directly.
+     */
+    private record PaletteView(List<RgbColor> stops, int shadesPerSegment) {
+        PaletteView(Color[] stops, int shadesPerSegment) {
+            this(Arrays.stream(stops).map(RgbColor::new).toList(), shadesPerSegment);
+        }
+    }
+
+    private record RgbColor(int r, int g, int b) {
+        RgbColor(Color color) {
+            this(color.getRed(), color.getGreen(), color.getBlue());
+        }
     }
 }

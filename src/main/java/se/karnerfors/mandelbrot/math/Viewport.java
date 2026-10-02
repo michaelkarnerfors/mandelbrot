@@ -1,9 +1,12 @@
 package se.karnerfors.mandelbrot.math;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 public final class Viewport {
 
     private static final double MIN_ZOOM = 1.0e-2;
     private static final double MAX_ZOOM = 1.0e13;
+    private static final ObjectMapper JSON = new ObjectMapper();
 
     private final Complex center;
     private final double zoom;
@@ -89,5 +92,30 @@ public final class Viewport {
             return MIN_ZOOM;
         }
         return Math.max(MIN_ZOOM, Math.min(zoom, MAX_ZOOM));
+    }
+
+    /**
+     * Renders this Viewport as a JSON object string, e.g.
+     * {@code {"center":{"real":-0.5,"imaginary":0.0},"zoom":256.0,"width":800,"height":600}}.
+     */
+    @Override
+    public String toString() {
+        try {
+            return JSON.writeValueAsString(new ViewportView(center, zoom, width, height));
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to serialize Viewport to JSON", e);
+        }
+    }
+
+    /**
+     * Jackson-friendly view of a Viewport's exported state.
+     */
+    private record ViewportView(ComplexView center, double zoom, int width, int height) {
+        ViewportView(Complex center, double zoom, int width, int height) {
+            this(new ComplexView(center.real, center.imaginary), zoom, width, height);
+        }
+    }
+
+    private record ComplexView(double real, double imaginary) {
     }
 }

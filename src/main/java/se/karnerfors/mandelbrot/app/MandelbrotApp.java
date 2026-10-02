@@ -1,20 +1,27 @@
 package se.karnerfors.mandelbrot.app;
 
 import java.awt.BorderLayout;
+import java.io.File;
+import java.io.IOException;
 import java.util.concurrent.atomic.AtomicReference;
 
 import javax.swing.BorderFactory;
 import javax.swing.ButtonGroup;
 import javax.swing.JButton;
 import javax.swing.JDialog;
+import javax.swing.JFileChooser;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
+import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JRadioButton;
 import javax.swing.JToolBar;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
+import javax.swing.filechooser.FileNameExtensionFilter;
 
+import se.karnerfors.mandelbrot.io.MandelbrotConfig;
+import se.karnerfors.mandelbrot.io.MandelbrotConfigIO;
 import se.karnerfors.mandelbrot.math.Complex;
 import se.karnerfors.mandelbrot.math.Viewport;
 import se.karnerfors.mandelbrot.render.RenderSettings;
@@ -40,6 +47,8 @@ public class MandelbrotApp {
         backButton.setEnabled(false);
         JButton paletteButton = new JButton("Palette…");
         JButton renderButton = new JButton("Render…");
+        JButton saveButton = new JButton("Save…");
+        JButton loadButton = new JButton("Load…");
 
         JToolBar toolBar = new JToolBar();
         toolBar.setFloatable(false);
@@ -48,13 +57,16 @@ public class MandelbrotApp {
         toolBar.add(paletteButton);
         toolBar.add(renderButton);
         toolBar.addSeparator();
+        toolBar.add(saveButton);
+        toolBar.add(loadButton);
+        toolBar.addSeparator();
         toolBar.add(new JLabel("Supersample: "));
 
         ButtonGroup supersampleGroup = new ButtonGroup();
         int currentFactor = fractalPanel.getRenderSettings().supersampleFactor();
         for (int factor : new int[] { 1, 2, 4, 9 }) {
             JRadioButton radio = new JRadioButton(factor + "x", factor == currentFactor);
-            radio.addActionListener(e -> {
+            radio.addActionListener(_ -> {
                 RenderSettings current = fractalPanel.getRenderSettings();
                 fractalPanel.setRenderSettings(new RenderSettings(current.maxIterations(), current.escapeRadius(), factor));
             });
@@ -62,7 +74,7 @@ public class MandelbrotApp {
             toolBar.add(radio);
         }
 
-        paletteButton.addActionListener(e -> {
+        paletteButton.addActionListener(_ -> {
             JDialog paletteDialog = new JDialog(frame, "Edit Palette", false);
             paletteDialog.setResizable(false);
             PaletteEditorPanel editor = new PaletteEditorPanel(fractalPanel.getPalette(), fractalPanel::setPalette,
@@ -73,7 +85,7 @@ public class MandelbrotApp {
             paletteDialog.setVisible(true);
         });
 
-        renderButton.addActionListener(e -> {
+        renderButton.addActionListener(_ -> {
             JDialog exportDialog = new JDialog(frame, "Render to File", true);
             exportDialog.setResizable(false);
             ExportPanel exportPanel = new ExportPanel(fractalPanel.getWidth(), fractalPanel.getHeight(),
@@ -84,6 +96,9 @@ public class MandelbrotApp {
             exportDialog.setLocationRelativeTo(frame);
             exportDialog.setVisible(true);
         });
+
+        saveButton.addActionListener(_ -> saveConfig(frame, fractalPanel));
+        loadButton.addActionListener(_ -> loadConfig(frame, fractalPanel));
 
         JLabel hintLabel = new JLabel(" Left-drag: zoom to region   ·   Right-drag: pan   ·   Wheel: zoom ");
         JLabel infoLabel = new JLabel("", SwingConstants.RIGHT);
@@ -115,10 +130,10 @@ public class MandelbrotApp {
             infoLabel.setText(text.toString());
         };
 
-        homeButton.addActionListener(e -> fractalPanel.goHome());
-        backButton.addActionListener(e -> fractalPanel.goBack());
+        homeButton.addActionListener(_ -> fractalPanel.goHome());
+        backButton.addActionListener(_ -> fractalPanel.goBack());
 
-        fractalPanel.setViewportListener(v -> SwingUtilities.invokeLater(refreshStatus));
+        fractalPanel.setViewportListener(_ -> SwingUtilities.invokeLater(refreshStatus));
         fractalPanel.setRenderStatusListener(status -> SwingUtilities.invokeLater(() -> {
             latestStatus.set(status);
             refreshStatus.run();
@@ -137,5 +152,53 @@ public class MandelbrotApp {
         frame.setVisible(true);
 
         refreshStatus.run();
+    }
+
+    /** Saves the current view (center/zoom) and palette as a pretty-printed JSON config file. */
+    private static void saveConfig(JFrame frame, FractalPanel fractalPanel) {
+        JFileChooser chooser = new JFileChooser();
+        chooser.setFileFilter(new FileNameExtensionFilter("Mandelbrot config (*.json)", "json"));
+        chooser.setSelectedFile(new File("mandelbrot-config.json"));
+        if (chooser.showSaveDialog(frame) != JFileChooser.APPROVE_OPTION) {
+            return;
+        }
+        File file = withJsonExtension(chooser.getSelectedFile());
+        MandelbrotConfig config = MandelbrotConfig.capture(fractalPanel.getCurrentViewport(), fractalPanel.getPalette());
+        try {
+            MandelbrotConfigIO.saveJson(file, config);
+        } catch (IOException ex) {
+            JOptionPane.showMessageDialog(frame, "Failed to save: " + ex.getMessage(), "Save failed",
+                    JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    /**
+     * Loads a {@link MandelbrotConfig} from either a {@code .json} config
+     * file or a {@code .png} previously exported by this app (the config is
+     * embedded as metadata in every exported PNG), and jumps the live view
+     * to it. Window size is left untouched -- only center, zoom, and
+     * palette are restored.
+     */
+    private static void loadConfig(JFrame frame, FractalPanel fractalPanel) {
+        JFileChooser chooser = new JFileChooser();
+        chooser.setFileFilter(new FileNameExtensionFilter("Mandelbrot config (*.json, *.png)", "json", "png"));
+        if (chooser.showOpenDialog(frame) != JFileChooser.APPROVE_OPTION) {
+            return;
+        }
+        File file = chooser.getSelectedFile();
+        try {
+            MandelbrotConfig config = MandelbrotConfigIO.load(file);
+            fractalPanel.applyConfig(config);
+        } catch (IOException ex) {
+            JOptionPane.showMessageDialog(frame, "Failed to load: " + ex.getMessage(), "Load failed",
+                    JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    private static File withJsonExtension(File file) {
+        if (file.getName().toLowerCase().endsWith(".json")) {
+            return file;
+        }
+        return new File(file.getParentFile(), file.getName() + ".json");
     }
 }
