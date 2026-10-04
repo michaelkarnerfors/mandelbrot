@@ -46,7 +46,7 @@ public record MandelbrotConfig(int version, ViewportData viewport, PaletteData p
     public record ViewportData(double real, double imaginary, double zoom) {
         public static ViewportData from(Viewport viewport) {
             Complex center = viewport.center();
-            return new ViewportData(center.real, center.imaginary, viewport.zoom());
+            return new ViewportData(center.real(), center.imaginary(), viewport.zoom());
         }
 
         public Viewport toViewport(int width, int height) {

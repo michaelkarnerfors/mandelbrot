@@ -14,7 +14,7 @@ public final class Viewport {
     private final int height;
 
     public Viewport(Complex center, double zoom, int width, int height) {
-        this.center = Complex.fromCartesian(center.real, center.imaginary);
+        this.center = Complex.fromCartesian(center.real(), center.imaginary());
         this.zoom = clampZoom(zoom);
         this.width = width;
         this.height = height;
@@ -28,7 +28,7 @@ public final class Viewport {
     }
 
     public Complex center() {
-        return Complex.fromCartesian(center.real, center.imaginary);
+        return Complex.fromCartesian(center.real(), center.imaginary());
     }
 
     public double zoom() {
@@ -44,8 +44,8 @@ public final class Viewport {
     }
 
     public Complex toComplex(int screenX, int screenY) {
-        double real = center.real + (screenX - (width / 2)) / zoom;
-        double imaginary = center.imaginary + (screenY - (height / 2)) / zoom;
+        double real = center.real() + (screenX - (width / 2)) / zoom;
+        double imaginary = center.imaginary() + (screenY - (height / 2)) / zoom;
         return Complex.fromCartesian(real, imaginary);
     }
 
@@ -64,14 +64,14 @@ public final class Viewport {
     public Viewport zoomedAround(int pivotX, int pivotY, double factor) {
         Complex pivot = toComplex(pivotX, pivotY);
         double newZoom = clampZoom(zoom * factor);
-        double newCenterReal = pivot.real - (pivotX - (width / 2)) / newZoom;
-        double newCenterImaginary = pivot.imaginary - (pivotY - (height / 2)) / newZoom;
+        double newCenterReal = pivot.real() - (pivotX - (width / 2)) / newZoom;
+        double newCenterImaginary = pivot.imaginary() - (pivotY - (height / 2)) / newZoom;
         return new Viewport(Complex.fromCartesian(newCenterReal, newCenterImaginary), newZoom, width, height);
     }
 
     public Viewport panned(double dxPixels, double dyPixels) {
-        double newCenterReal = center.real - dxPixels / zoom;
-        double newCenterImaginary = center.imaginary - dyPixels / zoom;
+        double newCenterReal = center.real() - dxPixels / zoom;
+        double newCenterImaginary = center.imaginary() - dyPixels / zoom;
         return new Viewport(Complex.fromCartesian(newCenterReal, newCenterImaginary), zoom, width, height);
     }
 
@@ -112,7 +112,7 @@ public final class Viewport {
      */
     private record ViewportView(ComplexView center, double zoom, int width, int height) {
         ViewportView(Complex center, double zoom, int width, int height) {
-            this(new ComplexView(center.real, center.imaginary), zoom, width, height);
+            this(new ComplexView(center.real(), center.imaginary()), zoom, width, height);
         }
     }
 

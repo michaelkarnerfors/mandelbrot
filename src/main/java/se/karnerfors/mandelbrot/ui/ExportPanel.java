@@ -117,8 +117,8 @@ public final class ExportPanel extends JPanel {
         }
 
         Complex center = currentViewport.center();
-        reField.setText(Double.toString(center.real));
-        imField.setText(Double.toString(center.imaginary));
+        reField.setText(Double.toString(center.real()));
+        imField.setText(Double.toString(center.imaginary()));
         zoomField.setText(Double.toString(currentViewport.zoom()));
 
         fileField.setEditable(false);

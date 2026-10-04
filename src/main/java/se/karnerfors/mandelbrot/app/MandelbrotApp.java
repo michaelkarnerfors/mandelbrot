@@ -117,7 +117,7 @@ public class MandelbrotApp {
             StringBuilder text = new StringBuilder();
             Complex hover = hoverPoint.get();
             if (hover != null) {
-                text.append(String.format("Re: %.6f  Im: %.6f   ", hover.real, hover.imaginary));
+                text.append(String.format("Re: %.6f  Im: %.6f   ", hover.real(), hover.imaginary()));
             }
             text.append(String.format("Zoom: %.3e", viewport.zoom()));
             RenderStatus status = latestStatus.get();

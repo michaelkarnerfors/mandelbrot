@@ -517,8 +517,8 @@ public final class FractalPanel extends JPanel {
         double s = live.zoom() / imageViewport.zoom();
         double w = getWidth();
         double h = getHeight();
-        double tx = w / 2.0 * (1 - s) + (imageViewport.center().real - live.center().real) * live.zoom();
-        double ty = h / 2.0 * (1 - s) + (imageViewport.center().imaginary - live.center().imaginary) * live.zoom();
+        double tx = w / 2.0 * (1 - s) + (imageViewport.center().real() - live.center().real()) * live.zoom();
+        double ty = h / 2.0 * (1 - s) + (imageViewport.center().imaginary() - live.center().imaginary()) * live.zoom();
 
         Graphics2D layer = (Graphics2D) g.create();
         layer.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
