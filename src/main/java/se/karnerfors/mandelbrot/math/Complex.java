@@ -11,14 +11,12 @@ import java.math.MathContext;
  * to immutable, return-a-new-instance semantics would silently break that
  * call site (the same {@code pixel} would simply never advance).
  *
- * <p>{@link DoubleComplex} is the native-{@code double} implementation used
- * everywhere today -- every existing call path ({@link Viewport} and
- * everything built on it) only ever produces this one. {@link BigComplex}
- * is a {@link BigDecimal}-backed implementation for zoom levels beyond
- * double precision's ~15-17 significant digits; it exists as the seam a
- * future zoom-threshold crossing would widen into, but nothing currently
- * constructs one outside of tests -- {@code Viewport} does not yet promote
- * to it at any zoom level.
+ * <p>{@link DoubleComplex} is the native-{@code double} implementation, used
+ * whenever the zoom is shallow enough for double precision to tell adjacent
+ * pixels apart. {@link BigComplex} is the {@link BigDecimal}-backed one for
+ * deeper zooms; {@link Viewport} decides which to hand out (see
+ * {@link Viewport#BIG_DECIMAL_ZOOM_THRESHOLD}), and the escape-time loop
+ * follows whatever it is given via {@link #zeroLike()}.
  */
 public sealed interface Complex permits DoubleComplex, BigComplex {
 
@@ -30,7 +28,7 @@ public sealed interface Complex permits DoubleComplex, BigComplex {
         return DoubleComplex.fromPolar(value, angle);
     }
 
-    /** The explicit high-precision entry point -- not yet wired into any render path. */
+    /** The explicit high-precision entry point. */
     static Complex fromBigDecimal(BigDecimal real, BigDecimal imaginary, MathContext context) {
         return BigComplex.fromBigDecimal(real, imaginary, context);
     }
@@ -46,6 +44,16 @@ public sealed interface Complex permits DoubleComplex, BigComplex {
 
     /** Squares this complex number in place and returns {@code this}, for chaining. */
     Complex square();
+
+    /** An independent copy with the same value, representation and precision. */
+    Complex copy();
+
+    /**
+     * A new zero with this number's representation and precision -- what an
+     * iteration seeded from this value has to start from, so that it keeps
+     * accumulating at this number's precision instead of narrowing to double.
+     */
+    Complex zeroLike();
 
     double getValue();
 

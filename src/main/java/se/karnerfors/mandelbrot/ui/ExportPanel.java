@@ -9,6 +9,7 @@ import java.awt.Insets;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -31,6 +32,7 @@ import javax.swing.filechooser.FileNameExtensionFilter;
 
 import se.karnerfors.mandelbrot.io.MandelbrotConfig;
 import se.karnerfors.mandelbrot.io.MandelbrotConfigIO;
+import se.karnerfors.mandelbrot.math.BigComplex;
 import se.karnerfors.mandelbrot.math.Complex;
 import se.karnerfors.mandelbrot.math.Viewport;
 import se.karnerfors.mandelbrot.palette.Palette;
@@ -117,8 +119,9 @@ public final class ExportPanel extends JPanel {
         }
 
         Complex center = currentViewport.center();
-        reField.setText(Double.toString(center.real()));
-        imField.setText(Double.toString(center.imaginary()));
+        // A deep (BigDecimal) center shows all its digits; going through double here would move the export elsewhere.
+        reField.setText(center instanceof BigComplex big ? big.realValue().toPlainString() : Double.toString(center.real()));
+        imField.setText(center instanceof BigComplex big ? big.imaginaryValue().toPlainString() : Double.toString(center.imaginary()));
         zoomField.setText(Double.toString(currentViewport.zoom()));
 
         fileField.setEditable(false);
@@ -175,11 +178,11 @@ public final class ExportPanel extends JPanel {
         Resolution resolution = (Resolution) resolutionCombo.getSelectedItem();
         int factor = selectedSupersampleFactor();
 
-        Double re = parseField(reField, "Re");
+        BigDecimal re = parseDecimal(reField, "Re");
         if (re == null) {
             return;
         }
-        Double im = parseField(imField, "Im");
+        BigDecimal im = parseDecimal(imField, "Im");
         if (im == null) {
             return;
         }
@@ -194,7 +197,7 @@ public final class ExportPanel extends JPanel {
         }
         File outputFile = withPngExtension(new File(path));
 
-        Viewport target = new Viewport(Complex.fromCartesian(re, im), zoom, resolution.width(), resolution.height());
+        Viewport target = Viewport.fromDecimal(re, im, zoom, resolution.width(), resolution.height());
         RenderSettings settings = new RenderSettings(baseSettings.maxIterations(), baseSettings.escapeRadius(), factor);
 
         cancelRequested = false;
@@ -256,6 +259,15 @@ public final class ExportPanel extends JPanel {
             }
         }
         return 1;
+    }
+
+    private BigDecimal parseDecimal(JTextField field, String label) {
+        try {
+            return new BigDecimal(field.getText().trim());
+        } catch (NumberFormatException ex) {
+            JOptionPane.showMessageDialog(this, label + " must be a number.", "Invalid value", JOptionPane.WARNING_MESSAGE);
+            return null;
+        }
     }
 
     private Double parseField(JTextField field, String label) {

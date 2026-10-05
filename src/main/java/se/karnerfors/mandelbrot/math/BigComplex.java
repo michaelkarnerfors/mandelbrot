@@ -5,9 +5,8 @@ import java.math.MathContext;
 
 /**
  * {@link BigDecimal}-backed implementation of {@link Complex}, for zoom
- * levels beyond double precision. Not yet produced by any render path --
- * {@link Viewport} always builds {@link DoubleComplex} today; this is the
- * seam a future zoom-threshold promotion would widen into.
+ * levels beyond double precision. {@link Viewport} hands these out once its
+ * zoom reaches {@link Viewport#BIG_DECIMAL_ZOOM_THRESHOLD}.
  *
  * <p>Mutable, like {@link DoubleComplex}: {@link #add} and {@link #square}
  * update the fields in place and return {@code this}. Every operation is
@@ -84,6 +83,16 @@ public final class BigComplex implements Complex {
         real = newReal;
         imaginary = newImaginary;
         return this;
+    }
+
+    @Override
+    public Complex copy() {
+        return new BigComplex(real, imaginary, context);
+    }
+
+    @Override
+    public Complex zeroLike() {
+        return new BigComplex(BigDecimal.ZERO, BigDecimal.ZERO, context);
     }
 
     @Override

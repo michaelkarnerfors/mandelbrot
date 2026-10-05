@@ -15,7 +15,8 @@ public final class EscapeTimeAlgorithm {
 
     public static EscapeResult compute(Complex c, int maxIterations, double escapeRadius) {
         int iterations = 0;
-        Complex pixel = Complex.fromCartesian(0.0D, 0.0D);
+        // Seeded from c so the iteration runs at c's precision: a double zero would narrow a BigComplex c on the first add.
+        Complex pixel = c.zeroLike();
         while (pixel.getValue() < escapeRadius && iterations++ < maxIterations) {
             pixel.square().add(c);
         }

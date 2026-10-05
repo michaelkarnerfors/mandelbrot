@@ -1,8 +1,8 @@
 package se.karnerfors.mandelbrot.math;
 
 /**
- * Native-{@code double} implementation of {@link Complex} -- the only
- * implementation any current render path produces. Mutable: {@link #add}
+ * Native-{@code double} implementation of {@link Complex}, used whenever the
+ * zoom is shallow enough for double precision. Mutable: {@link #add}
  * and {@link #square} update the fields in place and return {@code this},
  * reproducing the original (pre-interface) {@code Complex} class's
  * behavior exactly, field for field and operation for operation.
@@ -48,6 +48,16 @@ public final class DoubleComplex implements Complex {
         imaginary = 2 * real * imaginary;
         real = newReal;
         return this;
+    }
+
+    @Override
+    public Complex copy() {
+        return new DoubleComplex(real, imaginary);
+    }
+
+    @Override
+    public Complex zeroLike() {
+        return new DoubleComplex(0.0D, 0.0D);
     }
 
     @Override
