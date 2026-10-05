@@ -1,10 +1,10 @@
 package se.karnerfors.mandelbrot.io;
 
 import java.awt.Color;
+import java.math.BigDecimal;
 import java.util.Arrays;
 import java.util.List;
 
-import se.karnerfors.mandelbrot.math.Complex;
 import se.karnerfors.mandelbrot.math.Viewport;
 import se.karnerfors.mandelbrot.palette.Palette;
 
@@ -25,7 +25,7 @@ import se.karnerfors.mandelbrot.palette.Palette;
 public record MandelbrotConfig(int version, ViewportData viewport, PaletteData palette) {
 
     /** Bump when the shape of this record (or its nested records) changes incompatibly. */
-    public static final int CURRENT_VERSION = 1;
+    public static final int CURRENT_VERSION = 2;
 
     /** Captures the given viewport (center/zoom only) and palette as a config at the current version. */
     public static MandelbrotConfig capture(Viewport viewport, Palette palette) {
@@ -42,15 +42,19 @@ public record MandelbrotConfig(int version, ViewportData viewport, PaletteData p
         return palette.toPalette();
     }
 
-    /** Center + zoom only -- width/height are deliberately not persisted, see class docs. */
-    public record ViewportData(double real, double imaginary, double zoom) {
+    /**
+     * Center + zoom only -- width/height are deliberately not persisted, see
+     * class docs. The center is kept as decimal text rather than a JSON number
+     * so a deep (BigDecimal) center survives a save/load with every digit;
+     * as a double it would reload somewhere else entirely.
+     */
+    public record ViewportData(String real, String imaginary, double zoom) {
         public static ViewportData from(Viewport viewport) {
-            Complex center = viewport.center();
-            return new ViewportData(center.real(), center.imaginary(), viewport.zoom());
+            return new ViewportData(viewport.centerRealText(), viewport.centerImaginaryText(), viewport.zoom());
         }
 
         public Viewport toViewport(int width, int height) {
-            return new Viewport(Complex.fromCartesian(real, imaginary), zoom, width, height);
+            return Viewport.fromDecimal(new BigDecimal(real), new BigDecimal(imaginary), zoom, width, height);
         }
     }
 

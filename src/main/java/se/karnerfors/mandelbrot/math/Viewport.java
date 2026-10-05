@@ -70,6 +70,20 @@ public final class Viewport {
         return center.copy();
     }
 
+    /**
+     * The center's real part as decimal text: every digit of a deep
+     * (BigDecimal) center, the shortest exact text of a double one. Feeds
+     * {@link #fromDecimal} without losing anything.
+     */
+    public String centerRealText() {
+        return center instanceof BigComplex big ? big.realValue().toPlainString() : Double.toString(center.real());
+    }
+
+    /** The center's imaginary part as decimal text; see {@link #centerRealText()}. */
+    public String centerImaginaryText() {
+        return center instanceof BigComplex big ? big.imaginaryValue().toPlainString() : Double.toString(center.imaginary());
+    }
+
     public double zoom() {
         return zoom;
     }

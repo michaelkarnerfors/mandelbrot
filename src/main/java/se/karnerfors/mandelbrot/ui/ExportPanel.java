@@ -32,8 +32,6 @@ import javax.swing.filechooser.FileNameExtensionFilter;
 
 import se.karnerfors.mandelbrot.io.MandelbrotConfig;
 import se.karnerfors.mandelbrot.io.MandelbrotConfigIO;
-import se.karnerfors.mandelbrot.math.BigComplex;
-import se.karnerfors.mandelbrot.math.Complex;
 import se.karnerfors.mandelbrot.math.Viewport;
 import se.karnerfors.mandelbrot.palette.Palette;
 import se.karnerfors.mandelbrot.render.ImageExporter;
@@ -118,10 +116,9 @@ public final class ExportPanel extends JPanel {
             supersampleRadios[i] = radio;
         }
 
-        Complex center = currentViewport.center();
         // A deep (BigDecimal) center shows all its digits; going through double here would move the export elsewhere.
-        reField.setText(center instanceof BigComplex big ? big.realValue().toPlainString() : Double.toString(center.real()));
-        imField.setText(center instanceof BigComplex big ? big.imaginaryValue().toPlainString() : Double.toString(center.imaginary()));
+        reField.setText(currentViewport.centerRealText());
+        imField.setText(currentViewport.centerImaginaryText());
         zoomField.setText(Double.toString(currentViewport.zoom()));
 
         fileField.setEditable(false);
