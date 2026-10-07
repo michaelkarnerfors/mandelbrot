@@ -195,7 +195,7 @@ public final class ExportPanel extends JPanel {
         File outputFile = withPngExtension(new File(path));
 
         Viewport target = new Viewport(Complex.fromCartesian(re, im), zoom, resolution.width(), resolution.height());
-        RenderSettings settings = new RenderSettings(baseSettings.maxIterations(), baseSettings.escapeRadius(), factor);
+        RenderSettings settings = baseSettings.withSupersampleFactor(factor);
 
         cancelRequested = false;
         rendering = true;
@@ -235,7 +235,7 @@ public final class ExportPanel extends JPanel {
                 }
                 try {
                     BufferedImage image = get();
-                    MandelbrotConfig config = MandelbrotConfig.capture(target, palette);
+                    MandelbrotConfig config = MandelbrotConfig.capture(target, palette, settings);
                     MandelbrotConfigIO.writePng(outputFile, image, config);
                     progressBar.setValue(100);
                     statusLabel.setText("Saved to " + outputFile.getAbsolutePath());

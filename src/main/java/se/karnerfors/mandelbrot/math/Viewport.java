@@ -27,6 +27,13 @@ public final class Viewport {
         return new Viewport(Complex.fromCartesian(-0.5, 0.0), zoom, width, height);
     }
 
+    /** Julia sets sit around the origin whatever c is, and stay within roughly |z| < 1.6. */
+    public static Viewport juliaFullView(int width, int height) {
+        double span = 3.2;
+        double zoom = Math.min(width, height) / span;
+        return new Viewport(Complex.fromCartesian(0.0, 0.0), zoom, width, height);
+    }
+
     public Complex center() {
         return Complex.fromCartesian(center.real, center.imaginary);
     }

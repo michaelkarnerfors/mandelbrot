@@ -33,7 +33,7 @@ public final class Renderer {
         for (int x = 0; x < width; x++) {
             for (int y = 0; y < height; y++) {
                 Complex c = viewport.toComplex(x, y);
-                grid.set(x, y, EscapeTimeAlgorithm.compute(c, settings.maxIterations(), settings.escapeRadius()));
+                grid.set(x, y, settings.algorithm().compute(c, settings));
             }
         }
 
@@ -83,7 +83,7 @@ public final class Renderer {
                     for (int x = tile.x; x < tile.x + tile.width; x++) {
                         for (int y = tile.y; y < tile.y + tile.height; y++) {
                             Complex c = viewport.toComplex(x, y);
-                            grid.set(x, y, EscapeTimeAlgorithm.compute(c, settings.maxIterations(), settings.escapeRadius()));
+                            grid.set(x, y, settings.algorithm().compute(c, settings));
                         }
                     }
                     if (onTileComplete != null && !isCancelled.getAsBoolean()) {

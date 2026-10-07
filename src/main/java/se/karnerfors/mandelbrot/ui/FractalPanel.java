@@ -1,11 +1,16 @@
 package se.karnerfors.mandelbrot.ui;
 
+import java.awt.AWTException;
 import java.awt.Color;
 import java.awt.Cursor;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
+import java.awt.GridLayout;
+import java.awt.IllegalComponentStateException;
+import java.awt.Point;
 import java.awt.Rectangle;
 import java.awt.RenderingHints;
+import java.awt.Robot;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
 import java.awt.event.MouseAdapter;
@@ -19,7 +24,10 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.function.Consumer;
 
+import javax.swing.JLabel;
+import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.JTextField;
 import javax.swing.SwingUtilities;
 import javax.swing.SwingWorker;
 import javax.swing.Timer;
@@ -30,13 +38,16 @@ import se.karnerfors.mandelbrot.io.MandelbrotConfig;
 import se.karnerfors.mandelbrot.palette.Palette;
 import se.karnerfors.mandelbrot.render.Colorizer;
 import se.karnerfors.mandelbrot.render.IterationGrid;
+import se.karnerfors.mandelbrot.render.RenderAlgorithm;
 import se.karnerfors.mandelbrot.render.RenderSettings;
 import se.karnerfors.mandelbrot.render.Renderer;
 
 /**
  * The live fractal display. Mouse mapping: left-drag draws an aspect-locked
  * rubber-band box to zoom to a region, right-drag pans, the wheel zooms at
- * the cursor. Every interaction updates {@link #currentViewport} immediately
+ * the cursor, a left click centres on the clicked point (and moves the pointer
+ * there) and a right click
+ * asks for a coordinate to centre on. Every interaction updates {@link #currentViewport} immediately
  * and repaints using an affine transform of the last completed render, so
  * the view always feels instant; a background render then catches up.
  *
@@ -92,6 +103,8 @@ public final class FractalPanel extends JPanel {
     private Rectangle dragRect;
     private double panLiveDx, panLiveDy;
 
+    private Robot cursorRobot;
+
     private final Timer wheelRenderTimer;
     private final Timer resizeRenderTimer;
 
@@ -144,23 +157,32 @@ public final class FractalPanel extends JPanel {
 
             @Override
             public void mouseReleased(MouseEvent e) {
+                boolean click = false;
+                boolean leftButton = mode == Mode.SELECT;
                 if (mode == Mode.SELECT) {
                     if (dragRect != null && dragRect.width >= MIN_DRAG_PX && dragRect.height >= MIN_DRAG_PX) {
                         commitZoomToRect(dragRect);
+                    } else {
+                        click = true;
                     }
                     dragRect = null;
                 } else if (mode == Mode.PAN) {
-                    if (panLiveDx != 0 || panLiveDy != 0) {
+                    if (Math.abs(panLiveDx) >= MIN_DRAG_PX || Math.abs(panLiveDy) >= MIN_DRAG_PX) {
                         currentViewport = currentViewport.panned(panLiveDx, panLiveDy);
-                        panLiveDx = 0;
-                        panLiveDy = 0;
                         notifyViewportChanged();
                         submitRender();
+                    } else {
+                        click = true;
                     }
+                    panLiveDx = 0;
+                    panLiveDy = 0;
                     setCursor(Cursor.getPredefinedCursor(Cursor.CROSSHAIR_CURSOR));
                 }
                 mode = Mode.NONE;
                 repaint();
+                if (click) {
+                    handleClick(dragStartX, dragStartY, leftButton);
+                }
             }
 
             @Override
@@ -235,7 +257,9 @@ public final class FractalPanel extends JPanel {
 
     public void goHome() {
         history.push(currentViewport);
-        currentViewport = Viewport.classicFullView(getWidth(), getHeight());
+        currentViewport = renderSettings.algorithm() == RenderAlgorithm.JULIA
+                ? Viewport.juliaFullView(getWidth(), getHeight())
+                : Viewport.classicFullView(getWidth(), getHeight());
         notifyViewportChanged();
         repaint();
         submitRender();
@@ -307,9 +331,84 @@ public final class FractalPanel extends JPanel {
         worker.execute();
     }
 
+    /** Centres the view on {@code point}, keeping the zoom; Back returns to the previous view. */
+    public void centerOn(Complex point) {
+        history.push(currentViewport);
+        currentViewport = currentViewport.withCenter(point);
+        notifyViewportChanged();
+        repaint();
+        submitRender();
+    }
+
+    /**
+     * A click without a drag: left centres on the clicked point, right opens
+     * the coordinate dialog pre-filled with the clicked point.
+     */
+    private void handleClick(int screenX, int screenY, boolean leftButton) {
+        Complex clicked = currentViewport.toComplex(screenX, screenY);
+        if (leftButton) {
+            centerOn(clicked);
+            moveCursorToCenter();
+        } else {
+            promptForCenter(clicked);
+        }
+    }
+
+    /** Warps the mouse pointer to the middle of the panel, i.e. onto the point the view was just centred on. Best effort. */
+    private void moveCursorToCenter() {
+        try {
+            if (cursorRobot == null) {
+                cursorRobot = new Robot();
+            }
+            Point origin = getLocationOnScreen();
+            cursorRobot.mouseMove(origin.x + getWidth() / 2, origin.y + getHeight() / 2);
+        } catch (AWTException | SecurityException | IllegalComponentStateException ex) {
+            // No permission to move the pointer (headless, some Wayland/macOS setups): leave it where it is.
+        }
+    }
+
+    private void promptForCenter(Complex initial) {
+        JTextField reField = new JTextField(Double.toString(initial.real), 18);
+        JTextField imField = new JTextField(Double.toString(initial.imaginary), 18);
+        JPanel form = new JPanel(new GridLayout(2, 2, 6, 6));
+        form.add(new JLabel("Re:"));
+        form.add(reField);
+        form.add(new JLabel("Im:"));
+        form.add(imField);
+
+        while (true) {
+            int choice = JOptionPane.showConfirmDialog(SwingUtilities.getWindowAncestor(this), form,
+                    "Centre on coordinate", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+            if (choice != JOptionPane.OK_OPTION) {
+                return;
+            }
+            try {
+                centerOn(Complex.fromCartesian(parseCoordinate(reField.getText()), parseCoordinate(imField.getText())));
+                return;
+            } catch (NumberFormatException ex) {
+                JOptionPane.showMessageDialog(this, "Enter the real and imaginary parts as decimal numbers.",
+                        "Invalid coordinate", JOptionPane.ERROR_MESSAGE);
+            }
+        }
+    }
+
+    private static double parseCoordinate(String text) {
+        double value = Double.parseDouble(text.trim().replace(',', '.'));
+        if (!Double.isFinite(value)) {
+            throw new NumberFormatException("not finite: " + text);
+        }
+        return value;
+    }
+
     public void setRenderSettings(RenderSettings newSettings) {
         this.renderSettings = newSettings;
         submitRender();
+    }
+
+    /** Swaps the settings and jumps to the home view for them, with a single render. */
+    public void setRenderSettingsAndGoHome(RenderSettings newSettings) {
+        this.renderSettings = newSettings;
+        goHome();
     }
 
     /**
@@ -323,6 +422,7 @@ public final class FractalPanel extends JPanel {
         history.push(currentViewport);
         currentViewport = config.toViewport(getWidth(), getHeight());
         this.palette = config.toPalette();
+        this.renderSettings = config.applyTo(renderSettings);
         notifyViewportChanged();
         repaint();
         submitRender();

@@ -7,10 +7,13 @@ import java.util.List;
 import se.karnerfors.mandelbrot.math.Complex;
 import se.karnerfors.mandelbrot.math.Viewport;
 import se.karnerfors.mandelbrot.palette.Palette;
+import se.karnerfors.mandelbrot.render.JuliaPreset;
+import se.karnerfors.mandelbrot.render.RenderAlgorithm;
+import se.karnerfors.mandelbrot.render.RenderSettings;
 
 /**
  * A serializable snapshot of "where you are and how it's colored" -- center,
- * zoom, and palette -- independent of window size. Width/height are
+ * zoom, palette, and which fractal (with its Julia c) -- independent of window size. Width/height are
  * deliberately not persisted: they're supplied by whoever reconstructs a
  * {@link Viewport} from this config (the live window's current size when
  * loading, or the export resolution when embedding into a PNG), so a saved
@@ -22,14 +25,27 @@ import se.karnerfors.mandelbrot.palette.Palette;
  * {@code tEXt} chunk in exported PNGs so a rendered image can later be
  * traced back to the exact view and palette that produced it.
  */
-public record MandelbrotConfig(int version, ViewportData viewport, PaletteData palette) {
+public record MandelbrotConfig(int version, ViewportData viewport, PaletteData palette, FractalData fractal) {
 
     /** Bump when the shape of this record (or its nested records) changes incompatibly. */
-    public static final int CURRENT_VERSION = 1;
+    public static final int CURRENT_VERSION = 2;
 
-    /** Captures the given viewport (center/zoom only) and palette as a config at the current version. */
-    public static MandelbrotConfig capture(Viewport viewport, Palette palette) {
-        return new MandelbrotConfig(CURRENT_VERSION, ViewportData.from(viewport), PaletteData.from(palette));
+    /** Files and PNGs written before version 2 have no fractal section: they were all Mandelbrot. */
+    public MandelbrotConfig {
+        if (fractal == null) {
+            fractal = FractalData.mandelbrot();
+        }
+    }
+
+    /** Captures the given viewport (center/zoom only), palette and fractal choice as a config at the current version. */
+    public static MandelbrotConfig capture(Viewport viewport, Palette palette, RenderSettings settings) {
+        return new MandelbrotConfig(CURRENT_VERSION, ViewportData.from(viewport), PaletteData.from(palette),
+                FractalData.from(settings));
+    }
+
+    /** {@code base} with this config's fractal and Julia c swapped in (iterations, supersampling etc. are kept). */
+    public RenderSettings applyTo(RenderSettings base) {
+        return base.withAlgorithm(fractal.algorithm()).withC(fractal.c());
     }
 
     /** Reconstructs a Viewport at this config's center/zoom, sized to {@code width}x{@code height}. */
@@ -40,6 +56,28 @@ public record MandelbrotConfig(int version, ViewportData viewport, PaletteData p
     /** Reconstructs the Palette this config describes. */
     public Palette toPalette() {
         return palette.toPalette();
+    }
+
+    /** Which fractal is rendered and, for Julia, its constant c (kept for Mandelbrot too, so switching back and forth is lossless). */
+    public record FractalData(RenderAlgorithm algorithm, double cReal, double cImaginary) {
+        public FractalData {
+            if (algorithm == null) {
+                algorithm = RenderAlgorithm.MANDELBROT;
+            }
+        }
+
+        static FractalData mandelbrot() {
+            Complex c = JuliaPreset.DOUADY_RABBIT.c();
+            return new FractalData(RenderAlgorithm.MANDELBROT, c.real, c.imaginary);
+        }
+
+        static FractalData from(RenderSettings settings) {
+            return new FractalData(settings.algorithm(), settings.c().real, settings.c().imaginary);
+        }
+
+        Complex c() {
+            return Complex.fromCartesian(cReal, cImaginary);
+        }
     }
 
     /** Center + zoom only -- width/height are deliberately not persisted, see class docs. */

@@ -3,20 +3,21 @@ package se.karnerfors.mandelbrot.render;
 import se.karnerfors.mandelbrot.math.Complex;
 
 /**
- * The escape-time iteration itself, lifted unchanged (bit-for-bit) out of the
- * original MandelbrotImage.render() inner loop.
+ * Escape-time iteration for the Julia set of z -> z^2 + c: the pixel is the
+ * starting value z0, and c is the same for every pixel.
  */
-public final class EscapeTimeAlgorithm {
+public final class JuliaEscapeTimeAlgorithm {
 
     private static final double LOG_2 = Math.log(2.0D);
 
-    private EscapeTimeAlgorithm() {
+    private JuliaEscapeTimeAlgorithm() {
     }
 
-    public static EscapeResult compute(Complex c, int maxIterations, double escapeRadius) {
+    public static EscapeResult compute(Complex z0, Complex c, int maxIterations, double escapeRadius) {
         int iterations = 0;
-        Complex pixel = Complex.fromCartesian(0.0D, 0.0D);
-        while (pixel.getValue() < escapeRadius && iterations++ < maxIterations) {
+        double escapeSquared = escapeRadius * escapeRadius;
+        Complex pixel = Complex.fromCartesian(z0.real, z0.imaginary);
+        while (pixel.getHypotSquare() < escapeSquared && iterations++ < maxIterations) {
             pixel.square().add(c);
         }
 

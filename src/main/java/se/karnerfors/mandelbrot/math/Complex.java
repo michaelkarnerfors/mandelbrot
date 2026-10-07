@@ -39,6 +39,10 @@ public class Complex {
         return Math.hypot(this.real, this.imaginary);
     }
 
+    public double getHypotSquare() {
+        return this.real * this.real + this.imaginary * this.imaginary;
+    }
+
     public double getAngle() {
         return Math.atan2(this.real, this.imaginary);
 

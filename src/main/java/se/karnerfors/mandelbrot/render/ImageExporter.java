@@ -75,7 +75,7 @@ public final class ImageExporter {
                     for (int lx = 0; lx < tile.width; lx++) {
                         for (int ly = 0; ly < tile.height; ly++) {
                             Complex c = oversampled.toComplex(tile.x + lx, tile.y + ly);
-                            tileGrid.set(lx, ly, EscapeTimeAlgorithm.compute(c, settings.maxIterations(), settings.escapeRadius()));
+                            tileGrid.set(lx, ly, settings.algorithm().compute(c, settings));
                         }
                     }
                     if (isCancelled.getAsBoolean()) {
