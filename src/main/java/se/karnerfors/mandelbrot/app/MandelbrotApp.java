@@ -24,19 +24,20 @@ import javax.swing.SwingUtilities;
 
 import se.karnerfors.mandelbrot.io.Bookmark;
 import se.karnerfors.mandelbrot.io.BookmarkStore;
+import se.karnerfors.mandelbrot.io.JuliaPresetStore;
 import se.karnerfors.mandelbrot.io.MandelbrotConfig;
 import se.karnerfors.mandelbrot.io.PaletteLibrary;
 import se.karnerfors.mandelbrot.io.SessionState;
 import se.karnerfors.mandelbrot.io.SessionStore;
 import se.karnerfors.mandelbrot.math.Complex;
 import se.karnerfors.mandelbrot.render.IterationGrid;
-import se.karnerfors.mandelbrot.render.JuliaPreset;
 import se.karnerfors.mandelbrot.render.RenderAlgorithm;
 import se.karnerfors.mandelbrot.render.RenderJob;
 import se.karnerfors.mandelbrot.render.RenderQueue;
 import se.karnerfors.mandelbrot.render.RenderSettings;
 import se.karnerfors.mandelbrot.ui.BookmarkPopover;
 import se.karnerfors.mandelbrot.ui.FractalPanel;
+import se.karnerfors.mandelbrot.ui.JuliaPresetPopover;
 import se.karnerfors.mandelbrot.palette.Palette;
 import se.karnerfors.mandelbrot.ui.PaletteEditorPanel;
 import se.karnerfors.mandelbrot.ui.PaletteMenu;
@@ -117,77 +118,58 @@ public class MandelbrotApp {
             recorder.markDirty();
         });
 
-        // Julia constant: the Mandelbrot position the view was centred on, plus the famous presets.
-        MandelbrotPosition mandelbrotPosition = new MandelbrotPosition(fractalPanel.getCurrentViewport().center());
-        topBar.juliaC.addItem(mandelbrotPosition);
-        for (JuliaPreset preset : JuliaPreset.values()) {
-            topBar.juliaC.addItem(preset);
-        }
-        topBar.juliaC.setSelectedItem(JuliaPreset.DOUADY_RABBIT);
-        topBar.juliaC.setPrototypeDisplayValue(new MandelbrotPosition(Complex.fromCartesian(-0.12345678, -0.12345678)));
-        topBar.juliaC.setEnabled(initialSettings.algorithm() == RenderAlgorithm.JULIA);
-        boolean[] updatingPresets = { false };
+        // Julia constant: the c chip shows it and opens the presets; in Mandelbrot mode "Julia from here" takes its place.
+        JuliaPresetStore juliaPresets = new JuliaPresetStore(SessionStore.defaultDirectory());
+
+        // Makes the fractal controls show what the render settings say (after startup, a load, a bookmark).
+        Runnable syncFractalControls = () -> {
+            RenderSettings settings = fractalPanel.getRenderSettings();
+            topBar.fractal.setSelectedSilently(settings.algorithm());
+            topBar.showFractal(settings.algorithm());
+            Complex c = settings.c();
+            JuliaPresetStore.Entry match = juliaPresets.findByValue(c.real, c.imaginary);
+            topBar.cChip.setValue(c.real, c.imaginary, match == null ? null : match.name());
+            updatePaletteLabel.run();
+        };
+        syncFractalControls.run();
 
         topBar.fractal.setChangeListener(selected -> {
             RenderSettings current = fractalPanel.getRenderSettings();
-            topBar.juliaC.setEnabled(selected == RenderAlgorithm.JULIA);
+            topBar.showFractal(selected);
             if (selected == current.algorithm()) {
                 return;
             }
-            RenderSettings next = current.withAlgorithm(selected);
-            if (selected == RenderAlgorithm.JULIA) {
-                // Mandelbrot -> Julia: start from the point the Mandelbrot view is centred on.
-                Complex centre = fractalPanel.getCurrentViewport().center();
-                mandelbrotPosition.set(centre);
-                updatingPresets[0] = true;
-                topBar.juliaC.setSelectedItem(mandelbrotPosition);
-                updatingPresets[0] = false;
-                topBar.juliaC.repaint();
-                next = next.withC(centre);
-            }
-            fractalPanel.setRenderSettingsAndGoHome(next);
-        });
-        topBar.juliaC.addActionListener(_ -> {
-            if (updatingPresets[0]) {
-                return;
-            }
-            Object selected = topBar.juliaC.getSelectedItem();
-            if (selected instanceof JuliaPreset preset) {
-                fractalPanel.setRenderSettingsAndGoHome(fractalPanel.getRenderSettings().withC(preset.c()));
-            } else if (selected instanceof MandelbrotPosition position) {
-                fractalPanel.setRenderSettingsAndGoHome(fractalPanel.getRenderSettings().withC(position.c()));
-            }
-        });
-
-        // After a Load: make the fractal controls show what the loaded config put into the render settings.
-        Runnable syncFractalControls = () -> {
-            RenderSettings settings = fractalPanel.getRenderSettings();
-            updatingPresets[0] = true;
-            try {
-                topBar.fractal.setSelectedSilently(settings.algorithm());
-                topBar.juliaC.setEnabled(settings.algorithm() == RenderAlgorithm.JULIA);
-                Object match = mandelbrotPosition;
-                for (JuliaPreset preset : JuliaPreset.values()) {
-                    Complex presetC = preset.c();
-                    if (presetC.real == settings.c().real && presetC.imaginary == settings.c().imaginary) {
-                        match = preset;
-                        break;
-                    }
-                }
-                if (match == mandelbrotPosition) {
-                    mandelbrotPosition.set(settings.c());
-                }
-                topBar.juliaC.setSelectedItem(match);
-            } finally {
-                updatingPresets[0] = false;
-            }
-            topBar.juliaC.repaint();
-            updatePaletteLabel.run();
-        };
-
-        if (remembered.isPresent()) {
+            // Switching to Julia keeps the c it had last; "Julia from here" is the way to pick a new one.
+            fractalPanel.setRenderSettingsAndGoHome(current.withAlgorithm(selected));
             syncFractalControls.run();
-        }
+        });
+        topBar.juliaFromHere.addActionListener(_ -> {
+            Complex centre = fractalPanel.getCurrentViewport().center();
+            fractalPanel.setRenderSettingsAndGoHome(
+                    fractalPanel.getRenderSettings().withAlgorithm(RenderAlgorithm.JULIA).withC(centre));
+            syncFractalControls.run();
+            recorder.markDirty();
+        });
+        JuliaPresetPopover.Host juliaHost = new JuliaPresetPopover.Host() {
+            @Override
+            public Complex currentC() {
+                return fractalPanel.getRenderSettings().c();
+            }
+
+            @Override
+            public Palette palette() {
+                return fractalPanel.getPalette();
+            }
+
+            @Override
+            public void apply(JuliaPresetStore.Entry entry) {
+                fractalPanel.setRenderSettingsAndGoHome(fractalPanel.getRenderSettings().withC(entry.c()));
+                syncFractalControls.run();
+                recorder.markDirty();
+            }
+        };
+        topBar.cChip.addActionListener(
+                _ -> JuliaPresetPopover.show(topBar.cChip, juliaPresets, juliaHost, syncFractalControls));
 
         // Palette menu and the non-modal editor.
         JDialog[] editorDialog = { null };
@@ -577,29 +559,5 @@ public class MandelbrotApp {
             }
         }
         return false;
-    }
-
-    /** The Julia c dropdown's top entry: the Mandelbrot coordinate the view was centred on when Julia was last selected. */
-    private static final class MandelbrotPosition {
-        private double real;
-        private double imaginary;
-
-        MandelbrotPosition(Complex c) {
-            set(c);
-        }
-
-        void set(Complex c) {
-            this.real = c.real;
-            this.imaginary = c.imaginary;
-        }
-
-        Complex c() {
-            return Complex.fromCartesian(real, imaginary);
-        }
-
-        @Override
-        public String toString() {
-            return String.format("Mandelbrot position (%.8f %s %.8fi)", real, imaginary < 0 ? "-" : "+", Math.abs(imaginary));
-        }
     }
 }

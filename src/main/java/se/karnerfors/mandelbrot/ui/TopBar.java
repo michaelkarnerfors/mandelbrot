@@ -1,5 +1,6 @@
 package se.karnerfors.mandelbrot.ui;
 
+import java.awt.CardLayout;
 import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.Graphics;
@@ -10,7 +11,6 @@ import java.util.List;
 
 import javax.swing.Box;
 import javax.swing.BoxLayout;
-import javax.swing.JComboBox;
 import javax.swing.JComponent;
 import javax.swing.JPanel;
 import javax.swing.border.EmptyBorder;
@@ -41,7 +41,10 @@ public final class TopBar extends JPanel {
     public final AppButton home = AppButton.iconButton(Icons.Glyph.HOME, "Home", AppButton.Style.GHOST, false);
     public final AppButton back = AppButton.iconButton(Icons.Glyph.BACK, "Back", AppButton.Style.GHOST, false);
     public final SegmentedControl<RenderAlgorithm> fractal;
-    public final JComboBox<Object> juliaC = new JComboBox<>();
+    /** Julia mode: the constant c, which opens the presets. */
+    public final CChip cChip = new CChip();
+    /** Mandelbrot mode: start a Julia view from the point the view is centred on. */
+    public final AppButton juliaFromHere = new AppButton("Julia from here", Icons.Glyph.TARGET, AppButton.Style.OUTLINE, false);
     public final AppButton palette = new AppButton("Classic", null, AppButton.Style.OUTLINE, false);
     public final SegmentedControl<Integer> supersample;
     public final AppButton bookmarks = new AppButton("Bookmarks", Icons.Glyph.STAR, AppButton.Style.OUTLINE, false);
@@ -50,6 +53,14 @@ public final class TopBar extends JPanel {
     private final ThemedLabel supersampleLabel = new ThemedLabel("SETTLE AT", Token.MUTED, Theme::groupLabelFont);
     private final ThemedLabel memoryNote = new ThemedLabel("", Token.WARN, () -> Theme.monoMedium(12f));
     private final Component memoryNoteGap = Box.createHorizontalStrut(8);
+    private final JPanel cSlot = new JPanel(new CardLayout()) {
+        private static final long serialVersionUID = 1L;
+
+        @Override
+        public Dimension getMaximumSize() {
+            return getPreferredSize();
+        }
+    };
     private final List<AppButton> labelled = new ArrayList<>();
     private int fullWidth = -1;
     private boolean compact;
@@ -70,14 +81,22 @@ public final class TopBar extends JPanel {
         memoryNote.setHorizontalAlignment(javax.swing.SwingConstants.LEFT);
         memoryNote.setVisible(false); // takes no room until there is something to warn about
         memoryNoteGap.setVisible(false);
-        juliaC.setToolTipText("Julia constant c");
+        juliaFromHere.setToolTipText("<html>Julia set for the point at the centre of this view.<br>"
+                + "<i>Pick the place first, then look at its Julia set.</i></html>");
+        cSlot.setOpaque(false);
+        JPanel fromHereHolder = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 0, 0));
+        fromHereHolder.setOpaque(false);
+        fromHereHolder.add(juliaFromHere);
+        cSlot.add(fromHereHolder, RenderAlgorithm.MANDELBROT.name());
+        cSlot.add(cChip, RenderAlgorithm.JULIA.name());
+        showFractal(algorithm);
         back.setEnabled(false);
         palette.setToolTipText("Palettes");
         bookmarks.setToolTipText("Bookmarks");
+        labelled.add(juliaFromHere);
         labelled.add(palette);
         labelled.add(bookmarks);
         labelled.add(render);
-        applyJuliaComboWidth();
 
         add(center(home));
         add(Box.createHorizontalStrut(2));
@@ -85,7 +104,7 @@ public final class TopBar extends JPanel {
         add(separator());
         add(center(fractal));
         add(Box.createHorizontalStrut(8));
-        add(center(juliaC));
+        add(center(cSlot));
         add(separator());
         add(center(palette));
         add(separator());
@@ -110,12 +129,9 @@ public final class TopBar extends JPanel {
         });
     }
 
-    /** A fixed width keeps the long "Mandelbrot position (...)" entry from stretching the bar. */
-    private void applyJuliaComboWidth() {
-        Dimension size = new Dimension(compact ? 150 : 260, 32);
-        juliaC.setPreferredSize(size);
-        juliaC.setMinimumSize(size);
-        juliaC.setMaximumSize(size);
+    /** Shows the c chip in Julia mode and "Julia from here" in Mandelbrot mode. */
+    public void showFractal(RenderAlgorithm algorithm) {
+        ((CardLayout) cSlot.getLayout()).show(cSlot, algorithm.name());
     }
 
     /**
@@ -155,7 +171,6 @@ public final class TopBar extends JPanel {
             return;
         }
         compact = value;
-        applyJuliaComboWidth();
         supersampleLabel.setVisible(!value);
         for (AppButton button : labelled) {
             button.setCompact(value);

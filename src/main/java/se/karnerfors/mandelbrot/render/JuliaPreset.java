@@ -26,6 +26,10 @@ public enum JuliaPreset {
         return Complex.fromCartesian(real, imaginary);
     }
 
+    public String displayName() {
+        return displayName;
+    }
+
     @Override
     public String toString() {
         return String.format("%s (%s %s %si)", displayName, real, imaginary < 0 ? "-" : "+", Math.abs(imaginary));
