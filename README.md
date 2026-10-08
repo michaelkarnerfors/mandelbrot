@@ -24,19 +24,21 @@ How to use all of this: the **[user guide](docs/user-guide.md)**.
 ## Building and running
 
 ```sh
-mvn compile
-java -cp target/classes se.karnerfors.mandelbrot.app.MandelbrotApp
+mvn compile dependency:copy-dependencies -DoutputDirectory=target/lib
+java -cp "target/classes:target/lib/*" se.karnerfors.mandelbrot.app.MandelbrotApp
 ```
 
-You can also run `MandelbrotApp` directly from your IDE. Dependencies (FlatLaf, Jackson) come through Maven. Your settings, palettes, bookmarks and renders are kept in `~/mandelbrot`; see the guide.
+The second Maven goal copies FlatLaf and Jackson next to the classes; the classpath needs them. On Windows, write the classpath as `"target\classes;target\lib\*"`. You can also run `MandelbrotApp` directly from your IDE. Your settings, palettes, bookmarks and renders are kept in `~/mandelbrot`; see the guide.
 
 ### Command-line render
 
-`MandelbrotCli` renders a fixed deep-zoom view at 3840×2160 with the default settings, writes it to `saved.png` in the working directory, and prints the render time:
+`MandelbrotCli` renders a picture without opening the window, from a view saved in the app:
 
 ```sh
-java -cp target/classes se.karnerfors.mandelbrot.app.MandelbrotCli
+java -cp "target/classes:target/lib/*" se.karnerfors.mandelbrot.app.MandelbrotCli seahorse.json -o seahorse.png --size 7680x4320 --samples 4
 ```
+
+The input is an exported bookmark, `bookmarks.json` itself (pick one with `--bookmark`), a view file from the old Save button, or a PNG made by this app (it carries its view inside, so it can be re-rendered larger). With no input it renders a deep-zoom demo. Options override what the file says: `--size`, `--samples`, `--fractal`, `--c`, `--re`, `--im`, `--zoom`, `--window`, `--threads`. Run with `--help` for the list. Pictures frame the same area the Render dialog would, and memory use is bounded by the output size.
 
 ## Project layout
 

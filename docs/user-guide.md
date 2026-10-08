@@ -86,6 +86,37 @@ The queue chip in the status bar summarises the queue and opens it: progress and
 
 Pictures go to `~/mandelbrot/renders` unless you choose another folder. Jobs are kept in memory only: quitting asks first if any are unfinished.
 
+## Rendering from the command line
+
+`MandelbrotCli` draws a picture without the window, which suits big renders and scripts. Build first as described in the [README](../README.md) (`mvn compile dependency:copy-dependencies -DoutputDirectory=target/lib`), then:
+
+```sh
+java -cp "target/classes:target/lib/*" se.karnerfors.mandelbrot.app.MandelbrotCli [input] [options]
+```
+
+(On Windows the classpath is `"target\classes;target\lib\*"`.)
+
+**Input** is where the view comes from:
+- a bookmark exported from the Bookmarks popover (`.json`);
+- `~/mandelbrot/bookmarks.json` itself: it holds many, so pick one with `--bookmark "Name"` (or its number; without it the CLI lists them);
+- a view file saved by the old Save button;
+- a PNG made by this app, which carries its view inside, so you can render any picture again at a new size.
+
+With no input you get the deep-zoom demo.
+
+| Option | Meaning |
+|---|---|
+| `-o`, `--output FILE` | Where to write the PNG. Default: the input's name with `.png` (`saved.png` for the demo). Never overwrites the input. |
+| `--size WxH` | Picture size, up to 16384 per side. Default 1920x1080 (the demo: 3840x2160). |
+| `--samples N` | Supersampling per axis: 1, 2, 4 or 9. Default 2. |
+| `--window WxH` | The window size the view's zoom refers to. Default 1100x700, the app's default canvas. The picture frames the same area as that window, like the Render dialog. |
+| `--fractal`, `--c` | Override the fractal (`mandelbrot` or `julia`) and the Julia constant (`-0.8,0.156` or `-0.8+0.156i`). |
+| `--re`, `--im`, `--zoom` | Override the centre and zoom of the view. |
+| `--threads N` | Worker threads. Default: all processors. |
+| `-s`, `--silent` | Print nothing on success. Errors still go to stderr. |
+
+It prints progress as it goes (unless `--silent`) and exits with 0 if the picture was written, 1 if it was not (unreadable or missing input, a failed render or write, out of memory), and 2 for a mistake on the command line. That makes it usable in a batch: `for f in *.json; do java -cp "target/classes:target/lib/*" se.karnerfors.mandelbrot.app.MandelbrotCli "$f" -s --size 3840x2160 || echo "failed: $f"; done`. The picture gets the view embedded, like pictures from the app, so it can be bookmarked or re-rendered later. Memory use is bounded by the picture size, not the supersampled size; if it still runs out, lower `--samples` or start Java with a larger `-Xmx`.
+
 ## Good to know
 
 **Your files** live in `~/mandelbrot/` (change with `-Dmandelbrot.home=<dir>`):
