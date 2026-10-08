@@ -90,12 +90,8 @@ public final class StatusBar extends JPanel {
         zoomValue.setText(String.format(Locale.ROOT, "%.3e", zoom));
     }
 
-    public void showRendering(double progress) {
-        chip.showRendering(progress);
-    }
-
-    public void showIdle(long lastRenderMillis) {
-        chip.showIdle(lastRenderMillis);
+    public void showStatus(RenderStatus status) {
+        chip.showStatus(status);
     }
 
     /** Call after {@link Theme#toggle()} so the switch shows the right icon and tooltip. */

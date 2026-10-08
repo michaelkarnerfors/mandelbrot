@@ -26,6 +26,7 @@ import se.karnerfors.mandelbrot.io.MandelbrotConfigIO;
 import se.karnerfors.mandelbrot.io.SessionState;
 import se.karnerfors.mandelbrot.io.SessionStore;
 import se.karnerfors.mandelbrot.math.Complex;
+import se.karnerfors.mandelbrot.render.IterationGrid;
 import se.karnerfors.mandelbrot.render.JuliaPreset;
 import se.karnerfors.mandelbrot.render.RenderAlgorithm;
 import se.karnerfors.mandelbrot.render.RenderSettings;
@@ -84,8 +85,16 @@ public class MandelbrotApp {
         StatusBar statusBar = new StatusBar();
         topBar.palette.setExtraIcon(new PaletteSwatchIcon(fractalPanel::getPalette));
 
+        // Warn next to the settle control when the chosen quality would take a large share of the Java heap.
+        Runnable updateMemoryNote = () -> {
+            int factor = fractalPanel.getRenderSettings().supersampleFactor();
+            long cells = (long) fractalPanel.getWidth() * factor;
+            topBar.setMemoryEstimate(IterationGrid.estimatedBytes(cells, (long) fractalPanel.getHeight() * factor),
+                    Runtime.getRuntime().maxMemory());
+        };
         topBar.supersample.setChangeListener(factor -> {
             fractalPanel.setRenderSettings(fractalPanel.getRenderSettings().withSupersampleFactor(factor));
+            updateMemoryNote.run();
             recorder.markDirty();
         });
 
@@ -200,19 +209,15 @@ public class MandelbrotApp {
             statusBar.syncThemeToggle();
         });
 
-        AtomicReference<RenderStatus> latestStatus = new AtomicReference<>(new RenderStatus(false, 0.0, -1));
+        AtomicReference<RenderStatus> latestStatus = new AtomicReference<>(RenderStatus.idle());
         AtomicReference<Complex> hoverPoint = new AtomicReference<>();
 
         Runnable refreshStatus = () -> {
             topBar.back.setEnabled(fractalPanel.hasHistory());
             statusBar.setZoom(fractalPanel.getCurrentViewport().zoom());
             statusBar.setCursorPoint(hoverPoint.get());
-            RenderStatus status = latestStatus.get();
-            if (status.rendering()) {
-                statusBar.showRendering(status.progress());
-            } else {
-                statusBar.showIdle(status.lastRenderMillis());
-            }
+            statusBar.showStatus(latestStatus.get());
+            updateMemoryNote.run();
         };
 
         // Only viewport changes mark the session dirty: cursor movement and render progress fire far too often.

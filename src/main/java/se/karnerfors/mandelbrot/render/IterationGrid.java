@@ -26,6 +26,11 @@ public final class IterationGrid {
         this.nu = new double[size];
     }
 
+    /** Bytes the backing arrays take for a grid of this size (1 + 4 + 8 + 8 per cell), for memory warnings. */
+    public static long estimatedBytes(long width, long height) {
+        return width * height * (1 + Integer.BYTES + 2L * Double.BYTES);
+    }
+
     public int width() {
         return width;
     }

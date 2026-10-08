@@ -8,6 +8,7 @@ import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.geom.Arc2D;
 import java.awt.geom.Ellipse2D;
+import java.awt.geom.Path2D;
 import java.awt.geom.RoundRectangle2D;
 import java.util.Locale;
 
@@ -19,8 +20,16 @@ import javax.swing.JComponent;
 import se.karnerfors.mandelbrot.ui.Theme.Token;
 
 /**
- * The pill in the status bar that says what the renderer is doing: a progress arc and
- * percentage while rendering, a green dot and the last render time when idle.
+ * The pill in the status bar that says where the renderer is in its two-step routine: a quick
+ * preview first, then the refinement at the quality you settle at.
+ *
+ * <pre>
+ *   ( ) Preview 40%                          drawing the 1x pass
+ *   ✓ Preview → ( ) Refining 4x 62%           preview is up, drawing the final quality over it
+ *   ● Settled at 4x 0.84 s                    done
+ * </pre>
+ *
+ * With a settle factor of 1 the preview is the final image, so it just says "Rendering" and then "Settled at 1x".
  */
 public final class StatusChip extends JComponent implements Accessible {
 
@@ -30,10 +39,9 @@ public final class StatusChip extends JComponent implements Accessible {
     private static final int PAD_X = 9;
     private static final int GAP = 8;
     private static final int INDICATOR = 14;
+    private static final int ARROW = 12;
 
-    private boolean rendering;
-    private double progress;
-    private long lastMillis = -1;
+    private RenderStatus status = RenderStatus.idle();
 
     public StatusChip() {
         setOpaque(false);
@@ -54,29 +62,49 @@ public final class StatusChip extends JComponent implements Accessible {
         return accessibleContext;
     }
 
-    public void showRendering(double progressFraction) {
-        this.rendering = true;
-        this.progress = Math.max(0.0, Math.min(1.0, progressFraction));
-        revalidate();
+    public void showStatus(RenderStatus newStatus) {
+        Dimension before = getPreferredSize();
+        this.status = newStatus;
+        setToolTipText(tooltip());
+        getAccessibleContext().setAccessibleDescription(summary());
+        if (!before.equals(getPreferredSize())) {
+            revalidate();
+        }
         repaint();
     }
 
-    public void showIdle(long lastRenderMillis) {
-        this.rendering = false;
-        this.lastMillis = lastRenderMillis;
-        revalidate();
-        repaint();
+    private String tooltip() {
+        return switch (status.stage()) {
+            case PREVIEW -> status.settleFactor() > 1
+                    ? "Drawing a quick 1x preview; it refines to " + status.settleFactor() + "x when you stop moving."
+                    : null;
+            case REFINING -> "Refining this view at " + status.settleFactor() + "x. Moving again restarts from a 1x preview.";
+            case FAILED -> "Not enough memory for " + status.settleFactor()
+                    + "x at this window size. The 1x preview is kept. Pick a lower factor, or start Java with a larger -Xmx.";
+            default -> null;
+        };
+    }
+
+    private String summary() {
+        return label() + (detail().isEmpty() ? "" : " " + detail());
     }
 
     private String label() {
-        return rendering ? "Rendering" : lastMillis >= 0 ? "Rendered" : "Ready";
+        return switch (status.stage()) {
+            case IDLE -> "Ready";
+            case PREVIEW -> status.settleFactor() > 1 ? "Preview" : "Rendering";
+            case REFINING -> "Refining " + status.settleFactor() + "x";
+            case SETTLED -> "Settled at " + status.settleFactor() + "x";
+            case FAILED -> "Not enough memory for " + status.settleFactor() + "x";
+        };
     }
 
     private String detail() {
-        if (rendering) {
-            return String.format(Locale.ROOT, "%.0f%%", progress * 100);
-        }
-        return lastMillis >= 0 ? String.format(Locale.ROOT, "%.2f s", lastMillis / 1000.0) : "";
+        return switch (status.stage()) {
+            case PREVIEW, REFINING -> String.format(Locale.ROOT, "%.0f%%", status.progress() * 100);
+            case SETTLED -> status.millis() >= 0 ? String.format(Locale.ROOT, "%.2f s", status.millis() / 1000.0) : "";
+            default -> "";
+        };
     }
 
     @Override
@@ -87,17 +115,7 @@ public final class StatusChip extends JComponent implements Accessible {
 
     @Override
     public Dimension getPreferredSize() {
-        FontMetrics label = getFontMetrics(getFont());
-        FontMetrics detail = getFontMetrics(Theme.mono(12f));
-        int width = 2 * PAD_X + INDICATOR + GAP + label.stringWidth(label());
-        String d = detail();
-        if (!d.isEmpty()) {
-            width += GAP + detail.stringWidth(d);
-        }
-        // Reserve the widest detail ("100%") so the chip does not jitter while the percentage counts up.
-        width = Math.max(width, 2 * PAD_X + INDICATOR + GAP + label.stringWidth("Rendering") + GAP
-                + detail.stringWidth("100%"));
-        return new Dimension(width, HEIGHT);
+        return new Dimension(layout(null, HEIGHT), HEIGHT);
     }
 
     @Override
@@ -122,43 +140,104 @@ public final class StatusChip extends JComponent implements Accessible {
             g2.fill(new RoundRectangle2D.Float(0, 0, w, h, h, h));
             g2.setColor(Theme.color(Token.BORDER));
             g2.draw(new RoundRectangle2D.Float(0.5f, 0.5f, w - 1, h - 1, h - 1, h - 1));
+            layout(g2, h);
+        } finally {
+            g2.dispose();
+        }
+    }
 
-            int x = PAD_X;
-            int cy = h / 2;
-            if (rendering) {
+    /**
+     * Lays the chip's contents out left to right. With {@code g2 == null} it only measures; otherwise
+     * it paints as it goes. Returns the total width including padding, so measuring and painting
+     * can never disagree.
+     */
+    private int layout(Graphics2D g2, int h) {
+        FontMetrics fm = getFontMetrics(getFont());
+        FontMetrics mfm = getFontMetrics(Theme.mono(12f));
+        int cy = h / 2;
+        int x = PAD_X;
+
+        RenderStatus.Stage stage = status.stage();
+        if (stage == RenderStatus.Stage.REFINING) {
+            // Completed first step: check mark + "Preview", then an arrow into the active step.
+            if (g2 != null) {
+                Icons.paint(Icons.Glyph.CHECK, g2, x, cy - INDICATOR / 2, INDICATOR, Theme.color(Token.OK));
+            }
+            x += INDICATOR + GAP;
+            x = text(g2, "Preview", fm, x, h, Token.MUTED);
+            x += GAP;
+            if (g2 != null) {
+                drawArrow(g2, x, cy);
+            }
+            x += ARROW + GAP;
+        }
+
+        if (g2 != null) {
+            drawIndicator(g2, x, cy);
+        }
+        x += INDICATOR + GAP;
+        x = text(g2, label(), fm, x, h, Token.TEXT);
+
+        String d = detail();
+        if (stage == RenderStatus.Stage.PREVIEW || stage == RenderStatus.Stage.REFINING) {
+            d = "100%"; // reserve the widest value so the chip does not jitter while the percentage counts up
+        }
+        if (!d.isEmpty()) {
+            x += GAP;
+            if (g2 != null) {
+                g2.setFont(Theme.mono(12f));
+                g2.setColor(Theme.color(Token.MUTED));
+                g2.drawString(detail(), x, (h - mfm.getHeight()) / 2 + mfm.getAscent());
+            }
+            x += mfm.stringWidth(d);
+        }
+        return x + PAD_X;
+    }
+
+    private int text(Graphics2D g2, String value, FontMetrics fm, int x, int h, Token color) {
+        if (g2 != null) {
+            g2.setFont(getFont());
+            g2.setColor(Theme.color(color));
+            g2.drawString(value, x, (h - fm.getHeight()) / 2 + fm.getAscent());
+        }
+        return x + fm.stringWidth(value);
+    }
+
+    private void drawArrow(Graphics2D g2, int x, int cy) {
+        Path2D.Float arrow = new Path2D.Float();
+        arrow.moveTo(x + 1, cy);
+        arrow.lineTo(x + ARROW - 1, cy);
+        arrow.moveTo(x + ARROW - 5, cy - 4);
+        arrow.lineTo(x + ARROW - 1, cy);
+        arrow.lineTo(x + ARROW - 5, cy + 4);
+        g2.setStroke(new BasicStroke(1.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g2.setColor(Theme.color(Token.MUTED));
+        g2.draw(arrow);
+    }
+
+    private void drawIndicator(Graphics2D g2, int x, int cy) {
+        switch (status.stage()) {
+            case PREVIEW, REFINING -> {
                 double d = INDICATOR - 3;
-                Arc2D.Double track = new Arc2D.Double(x + 1.5, cy - d / 2, d, d, 0, 360, Arc2D.OPEN);
                 g2.setStroke(new BasicStroke(3f));
                 g2.setColor(Theme.color(Token.BORDER));
-                g2.draw(track);
+                g2.draw(new Arc2D.Double(x + 1.5, cy - d / 2, d, d, 0, 360, Arc2D.OPEN));
                 g2.setColor(Theme.color(Token.ACCENT));
-                g2.draw(new Arc2D.Double(x + 1.5, cy - d / 2, d, d, 90, -360 * progress, Arc2D.OPEN));
-            } else if (lastMillis >= 0) {
+                g2.draw(new Arc2D.Double(x + 1.5, cy - d / 2, d, d, 90, -360 * status.progress(), Arc2D.OPEN));
+            }
+            case SETTLED -> {
                 g2.setColor(Theme.color(Token.OK));
                 g2.fill(new Ellipse2D.Double(x + (INDICATOR - 8) / 2.0, cy - 4, 8, 8));
-            } else {
+            }
+            case FAILED -> {
+                g2.setColor(Theme.color(Token.WARN));
+                g2.fill(new Ellipse2D.Double(x + (INDICATOR - 8) / 2.0, cy - 4, 8, 8));
+            }
+            default -> {
                 g2.setColor(Theme.color(Token.MUTED));
                 g2.setStroke(new BasicStroke(1.5f));
                 g2.draw(new Ellipse2D.Double(x + (INDICATOR - 8) / 2.0 + 0.75, cy - 4 + 0.75, 6.5, 6.5));
             }
-            x += INDICATOR + GAP;
-
-            g2.setFont(getFont());
-            g2.setColor(Theme.color(Token.TEXT));
-            FontMetrics fm = g2.getFontMetrics();
-            int baseline = (h - fm.getHeight()) / 2 + fm.getAscent();
-            g2.drawString(label(), x, baseline);
-            x += fm.stringWidth(label()) + GAP;
-
-            String d = detail();
-            if (!d.isEmpty()) {
-                g2.setFont(Theme.mono(12f));
-                g2.setColor(Theme.color(Token.MUTED));
-                FontMetrics mfm = g2.getFontMetrics();
-                g2.drawString(d, x, (h - mfm.getHeight()) / 2 + mfm.getAscent());
-            }
-        } finally {
-            g2.dispose();
         }
     }
 }

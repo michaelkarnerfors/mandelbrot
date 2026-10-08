@@ -1,5 +1,6 @@
 package se.karnerfors.mandelbrot.ui;
 
+import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.Graphics;
 import java.awt.event.ComponentAdapter;
@@ -27,6 +28,15 @@ public final class TopBar extends JPanel {
     private static final long serialVersionUID = 1L;
 
     private static final int HEIGHT = 48;
+    private static final int MEMORY_NOTE_WIDTH = 64;
+    private static final int MEMORY_NOTE_SPACE = MEMORY_NOTE_WIDTH + 8;
+
+    /** The memory note only appears when settling would use more than this share of the Java heap. */
+    private static final double MEMORY_NOTE_HEAP_SHARE = 0.35;
+
+    private static final String SETTLE_TOOLTIP = "<html>Quality to settle at. Moving around draws a quick 1x preview,<br>"
+            + "then the view refines to this factor once you stop.<br>"
+            + "<i>Samples per pixel along each axis: 4x means 16 samples.</i></html>";
 
     public final AppButton home = AppButton.iconButton(Icons.Glyph.HOME, "Home", AppButton.Style.GHOST, false);
     public final AppButton back = AppButton.iconButton(Icons.Glyph.BACK, "Back", AppButton.Style.GHOST, false);
@@ -38,7 +48,9 @@ public final class TopBar extends JPanel {
     public final AppButton load = new AppButton("Load…", null, AppButton.Style.OUTLINE, false);
     public final AppButton render = new AppButton("Render…", Icons.Glyph.RENDER, AppButton.Style.PRIMARY, false);
 
-    private final ThemedLabel supersampleLabel = new ThemedLabel("SUPERSAMPLE", Token.MUTED, Theme::groupLabelFont);
+    private final ThemedLabel supersampleLabel = new ThemedLabel("SETTLE AT", Token.MUTED, Theme::groupLabelFont);
+    private final ThemedLabel memoryNote = new ThemedLabel("", Token.WARN, () -> Theme.monoMedium(12f));
+    private final Component memoryNoteGap = Box.createHorizontalStrut(8);
     private final List<AppButton> labelled = new ArrayList<>();
     private int fullWidth = -1;
     private boolean compact;
@@ -51,7 +63,14 @@ public final class TopBar extends JPanel {
         fractal = new SegmentedControl<>(List.of(RenderAlgorithm.values()), algorithm, RenderAlgorithm::toString);
         fractal.setToolTipText("Fractal");
         supersample = new SegmentedControl<>(List.of(1, 2, 4, 9), supersampleFactor, factor -> factor + "x");
-        supersample.setToolTipText("Samples per pixel along each axis");
+        supersample.setToolTipText(SETTLE_TOOLTIP);
+        Dimension noteSize = new Dimension(MEMORY_NOTE_WIDTH, 22);
+        memoryNote.setPreferredSize(noteSize);
+        memoryNote.setMinimumSize(noteSize);
+        memoryNote.setMaximumSize(noteSize);
+        memoryNote.setHorizontalAlignment(javax.swing.SwingConstants.LEFT);
+        memoryNote.setVisible(false); // takes no room until there is something to warn about
+        memoryNoteGap.setVisible(false);
         juliaC.setToolTipText("Julia constant c");
         back.setEnabled(false);
         palette.setToolTipText("Edit the palette");
@@ -72,8 +91,9 @@ public final class TopBar extends JPanel {
         add(center(supersampleLabel));
         add(Box.createHorizontalStrut(8));
         add(center(supersample));
+        add(memoryNoteGap);
+        add(center(memoryNote));
         add(Box.createHorizontalGlue());
-        add(separator());
         add(center(save));
         add(Box.createHorizontalStrut(6));
         add(center(load));
@@ -84,9 +104,9 @@ public final class TopBar extends JPanel {
             @Override
             public void componentResized(ComponentEvent e) {
                 if (fullWidth < 0 && !compact) {
-                    fullWidth = TopBar.super.getPreferredSize().width;
+                    fullWidth = TopBar.super.getPreferredSize().width - (memoryNote.isVisible() ? MEMORY_NOTE_SPACE : 0);
                 }
-                setCompact(fullWidth > 0 && getWidth() < fullWidth);
+                updateCompact();
             }
         });
     }
@@ -97,6 +117,38 @@ public final class TopBar extends JPanel {
         juliaC.setPreferredSize(size);
         juliaC.setMinimumSize(size);
         juliaC.setMaximumSize(size);
+    }
+
+    /**
+     * Shows "≈ 1.2 GB" next to the settle control when drawing the current window at the chosen factor
+     * would take a large share of the Java heap, so the cost of 9x is visible before it bites.
+     */
+    public void setMemoryEstimate(long bytes, long maxHeapBytes) {
+        boolean warn = maxHeapBytes > 0 && bytes > maxHeapBytes * MEMORY_NOTE_HEAP_SHARE;
+        double gib = bytes / (1024.0 * 1024.0 * 1024.0);
+        String text = warn ? String.format(java.util.Locale.ROOT, "≈ %.1f GB", gib) : "";
+        if (text.equals(memoryNote.getText())) {
+            return; // called on every status update; only touch the label when it actually changes
+        }
+        memoryNote.setText(text);
+        updateCompact();
+        memoryNote.setToolTipText(warn
+                ? String.format(java.util.Locale.ROOT,
+                        "<html>Settling at this quality needs about %.1f GB for this window.<br>"
+                        + "Java may use up to %.1f GB. If memory runs out, the 1x preview stays on screen.</html>",
+                        gib, maxHeapBytes / (1024.0 * 1024.0 * 1024.0))
+                : null);
+    }
+
+    /** Compact when the bar is narrower than it needs to be; the memory note, when shown, needs a little more room. */
+    private void updateCompact() {
+        boolean noteWanted = !memoryNote.getText().isEmpty();
+        int needed = fullWidth + (noteWanted ? MEMORY_NOTE_SPACE : 0);
+        setCompact(fullWidth > 0 && getWidth() < needed);
+        boolean showNote = noteWanted && !compact;
+        memoryNote.setVisible(showNote);
+        memoryNoteGap.setVisible(showNote);
+        revalidate();
     }
 
     private void setCompact(boolean value) {

@@ -1,6 +1,6 @@
 # Mandelbrot
 
-An interactive Mandelbrot set explorer written in Java (Swing), with multithreaded tiled rendering, supersampled antialiasing, a live palette editor, and high-resolution export to PNG.
+An interactive Mandelbrot set explorer written in Java (Swing), with multithreaded tiled rendering, settle-at supersampled antialiasing, a live palette editor, and high-resolution export to PNG.
 
 ![Mandelbrot explorer showing a deep zoom rendered at 4x supersampling](Screenshot.png)
 
@@ -8,7 +8,7 @@ An interactive Mandelbrot set explorer written in Java (Swing), with multithread
 
 - **Interactive navigation**: left-drag to zoom to a region, right-drag to pan, mouse wheel to zoom at the cursor. **Home** resets the view and **Back** steps through your zoom history.
 - **Parallel rendering**: the image is split into tiles and rendered on a fixed thread pool sized to your CPU. Tiles appear as they finish, and the status bar shows progress and the last render time.
-- **Supersampling**: 1x, 2x, 4x, or 9x antialiasing from the toolbar. Samples are averaged in gamma-approximated space to match the palette blending.
+- **Settle at** (1x, 2x, 4x, 9x): moving around always draws a quick 1x preview first. When it is on screen and you stop moving, the same view refines on its own at the factor you settled on; moving again cancels the refinement and starts over from a 1x preview. The status bar shows both steps ("Preview → Refining 4x", then "Settled at 4x"). Samples are averaged in gamma-approximated space to match the palette blending. 9x on a large window needs well over 1 GB of Java heap; a warning appears next to the control, and if memory runs out the preview stays on screen (start Java with a larger `-Xmx` to go higher).
 - **Palette editor** (**Palette…**): add, remove, and reorder color stops, and set how many shades are interpolated between stops. The preview updates immediately; the fractal recolors on **Apply** or **Done**, and **Cancel** reverts.
 - **Render to file** (**Render…**): export a PNG at the current window size or at presets from 1024 px wide up to 8K (4:3, 16:9, and 21:9), with any supersample factor. Center (Re/Im) and zoom are prefilled from the current view and can be edited. Exports run in the background with a progress bar and Cancel. Memory use is bounded by the output image size, not by the supersampled size.
 - **Status bar**: the complex coordinate under the cursor, the current zoom level, **Go to…** (centre on exact Re, Im and zoom; pasting `-0.7436 + 0.1318i` into Re fills both), and the render status.

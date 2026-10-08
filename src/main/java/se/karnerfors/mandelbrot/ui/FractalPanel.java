@@ -18,6 +18,8 @@ import java.awt.event.MouseMotionAdapter;
 import java.awt.image.BufferedImage;
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
@@ -82,6 +84,10 @@ public final class FractalPanel extends JPanel {
 
     private IterationGrid lastGrid;
     private int lastSupersampleFactor = 1;
+    private long lastSettledMillis = -1;
+
+    /** A 1x preview is on screen and the refinement at the settle factor has not been able to start yet. */
+    private boolean pendingRefine;
 
     private Palette palette = Palette.classicRedWhiteBlack();
     private RenderSettings renderSettings = RenderSettings.defaults();
@@ -179,6 +185,7 @@ public final class FractalPanel extends JPanel {
                 if (click) {
                     handleClick(dragStartX, dragStartY, leftButton);
                 }
+                tryStartRefine();
             }
 
             @Override
@@ -382,8 +389,24 @@ public final class FractalPanel extends JPanel {
         submitRender();
     }
 
+    /**
+     * Changing only the settle factor does not redo the preview: if the view on screen is already drawn,
+     * it is simply refined (or left alone if it is already at that quality). Anything else re-renders.
+     */
     public void setRenderSettings(RenderSettings newSettings) {
+        RenderSettings old = this.renderSettings;
         this.renderSettings = newSettings;
+        int settle = settleFactor();
+        boolean onlySettleChanged = old.withSupersampleFactor(newSettings.supersampleFactor()).equals(newSettings);
+        if (onlySettleChanged && settle > 1 && lastGrid != null && committedViewport == currentViewport) {
+            pendingRefine = false;
+            if (lastSupersampleFactor == settle && inProgressViewport == null) {
+                reportStatus(RenderStatus.Stage.SETTLED, settle, 1.0, lastSettledMillis);
+            } else {
+                startPass(Pass.REFINE);
+            }
+            return;
+        }
         submitRender();
     }
 
@@ -496,11 +519,45 @@ public final class FractalPanel extends JPanel {
 
     // --- rendering --------------------------------------------------------
 
+    /** The two kinds of render pass: the quick 1x draw after navigating, and the refinement at the settle factor. */
+    private enum Pass { PREVIEW, REFINE }
+
+    /**
+     * Called after every navigation (pan, zoom, jump, resize, new fractal...). Draws the quick 1x
+     * preview; when that lands and you are not moving around, {@link #tryStartRefine()} follows up with
+     * the settle factor. Anything still running for the old view is dropped.
+     */
     private void submitRender() {
+        pendingRefine = false;
+        startPass(Pass.PREVIEW);
+    }
+
+    private int settleFactor() {
+        return Math.max(1, renderSettings.supersampleFactor());
+    }
+
+    /** True when the view being shown is {@code viewport} and nothing is about to change it. */
+    private boolean isViewSteady(Viewport viewport) {
+        return viewport != null && viewport == currentViewport && mode == Mode.NONE
+                && panLiveDx == 0 && panLiveDy == 0
+                && !wheelRenderTimer.isRunning() && !resizeRenderTimer.isRunning();
+    }
+
+    /** Starts the refinement if a preview is waiting for one and the view has come to rest. */
+    private void tryStartRefine() {
+        if (pendingRefine && isViewSteady(committedViewport)) {
+            pendingRefine = false;
+            startPass(Pass.REFINE);
+        }
+    }
+
+    private void startPass(Pass pass) {
         final Viewport target = currentViewport;
         final Palette activePalette = palette;
         final RenderSettings settings = renderSettings;
-        final int factor = Math.max(1, settings.supersampleFactor());
+        final int settle = settleFactor();
+        final int factor = pass == Pass.PREVIEW ? 1 : settle;
+        final RenderStatus.Stage stage = pass == Pass.PREVIEW ? RenderStatus.Stage.PREVIEW : RenderStatus.Stage.REFINING;
         final int oversampledTileSize = TILE_SIZE_FINAL_PIXELS * factor;
         final long myGeneration = ++renderGeneration;
 
@@ -510,15 +567,19 @@ public final class FractalPanel extends JPanel {
         this.totalTiles = tileCount(target.width(), target.height(), TILE_SIZE_FINAL_PIXELS);
         this.completedTiles = 0;
         this.renderStartNanos = System.nanoTime();
-        reportStatus(true, 0.0, -1);
+        reportStatus(stage, settle, 0.0, -1);
 
         SwingWorker<IterationGrid, Void> worker = new SwingWorker<>() {
             @Override
             protected IterationGrid doInBackground() throws Exception {
+                if (myGeneration != renderGeneration) {
+                    return null; // superseded before it started: don't even allocate the grid
+                }
                 Viewport oversampled = target.supersampled(factor);
                 return Renderer.computeGridParallel(oversampled, settings, executor, oversampledTileSize,
                         () -> myGeneration != renderGeneration,
-                        (grid, tile) -> onTileComplete(myGeneration, myProgressiveImage, activePalette, factor, grid, tile));
+                        (grid, tile) -> onTileComplete(myGeneration, myProgressiveImage, activePalette, factor, stage,
+                                settle, grid, tile));
             }
 
             @Override
@@ -528,17 +589,42 @@ public final class FractalPanel extends JPanel {
                 }
                 long elapsedMillis = (System.nanoTime() - renderStartNanos) / 1_000_000;
                 try {
-                    lastGrid = get();
+                    IterationGrid grid = get();
+                    lastGrid = grid;
                     lastSupersampleFactor = factor;
                     renderedImage = myProgressiveImage;
                     committedViewport = target;
                     inProgressViewport = null;
                     progressiveImage = null;
-                } catch (Exception ex) {
-                    ex.printStackTrace();
-                } finally {
-                    reportStatus(false, 1.0, elapsedMillis);
+                } catch (ExecutionException ex) {
+                    inProgressViewport = null;
+                    progressiveImage = null;
+                    if (ex.getCause() instanceof OutOfMemoryError) {
+                        // Keep whatever is on screen (the preview) and say why we could not do better.
+                        reportStatus(RenderStatus.Stage.FAILED, settle, 0.0, -1);
+                    } else {
+                        ex.printStackTrace();
+                        reportStatus(RenderStatus.Stage.IDLE, settle, 0.0, -1);
+                    }
                     repaint();
+                    return;
+                } catch (InterruptedException | CancellationException ex) {
+                    return;
+                }
+
+                if (pass == Pass.PREVIEW && settle > 1) {
+                    // The preview is up. Refine right away unless the user is already moving again.
+                    pendingRefine = true;
+                    reportStatus(RenderStatus.Stage.REFINING, settle, 0.0, -1);
+                    repaint();
+                    tryStartRefine();
+                } else {
+                    lastSettledMillis = elapsedMillis;
+                    reportStatus(RenderStatus.Stage.SETTLED, factor, 1.0, elapsedMillis);
+                    repaint();
+                    if (palette != activePalette) {
+                        setPalette(palette); // the palette changed while this was drawing: recolour the fresh grid
+                    }
                 }
             }
         };
@@ -556,7 +642,7 @@ public final class FractalPanel extends JPanel {
      * on the EDT.
      */
     private void onTileComplete(long myGeneration, BufferedImage myProgressiveImage, Palette activePalette, int factor,
-            IterationGrid grid, Rectangle oversampledTile) {
+            RenderStatus.Stage stage, int settle, IterationGrid grid, Rectangle oversampledTile) {
         BufferedImage tileOversampled = Colorizer.colorizeRegion(grid, activePalette, oversampledTile);
         BufferedImage tileFinal = Colorizer.downsample(tileOversampled, factor);
         int finalX = oversampledTile.x / factor;
@@ -567,16 +653,17 @@ public final class FractalPanel extends JPanel {
                 return; // superseded; drop this tile's result
             }
             Graphics2D g = myProgressiveImage.createGraphics();
+            g.setComposite(java.awt.AlphaComposite.Src);
             g.drawImage(tileFinal, finalX, finalY, null);
             g.dispose();
             completedTiles++;
-            reportStatus(true, totalTiles == 0 ? 1.0 : (double) completedTiles / totalTiles, -1);
+            reportStatus(stage, settle, totalTiles == 0 ? 1.0 : (double) completedTiles / totalTiles, -1);
             repaint(finalX, finalY, tileFinal.getWidth(), tileFinal.getHeight());
         });
     }
 
-    private void reportStatus(boolean rendering, double progress, long lastRenderMillis) {
-        renderStatusListener.accept(new RenderStatus(rendering, progress, lastRenderMillis));
+    private void reportStatus(RenderStatus.Stage stage, int settle, double progress, long millis) {
+        renderStatusListener.accept(new RenderStatus(stage, settle, progress, millis));
     }
 
     private static int tileCount(int width, int height, int tileSize) {
