@@ -1,5 +1,6 @@
 package se.karnerfors.mandelbrot.io;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.awt.Color;
 import java.util.Arrays;
 import java.util.List;
@@ -35,6 +36,41 @@ public record MandelbrotConfig(int version, ViewportData viewport, PaletteData p
         if (fractal == null) {
             fractal = FractalData.mandelbrot();
         }
+    }
+
+    /**
+     * True when this config can safely be handed to the renderer: finite numbers, a positive zoom and a
+     * sane palette. Configs come from files that may be hand-edited, truncated or from another version.
+     */
+    @JsonIgnore
+    public boolean isUsable() {
+        if (viewport == null || palette == null || fractal == null) {
+            return false;
+        }
+        if (!finite(viewport.real()) || !finite(viewport.imaginary()) || !finite(viewport.zoom()) || viewport.zoom() <= 0) {
+            return false;
+        }
+        if (!finite(fractal.cReal()) || !finite(fractal.cImaginary())) {
+            return false;
+        }
+        if (palette.stops() == null || palette.stops().size() < 2 || palette.stops().size() > 256
+                || palette.shadesPerSegment() < 1 || palette.shadesPerSegment() > 1024) {
+            return false;
+        }
+        for (RgbColor stop : palette.stops()) {
+            if (stop == null || !channel(stop.r()) || !channel(stop.g()) || !channel(stop.b())) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean finite(double value) {
+        return !Double.isNaN(value) && !Double.isInfinite(value);
+    }
+
+    private static boolean channel(int value) {
+        return value >= 0 && value <= 255;
     }
 
     /** Captures the given viewport (center/zoom only), palette and fractal choice as a config at the current version. */

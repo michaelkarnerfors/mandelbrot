@@ -10,20 +10,18 @@ import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
-import java.io.File;
 import java.io.IOException;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 
 import javax.swing.JDialog;
-import javax.swing.JFileChooser;
 import javax.swing.JFrame;
 import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
-import javax.swing.filechooser.FileNameExtensionFilter;
 
+import se.karnerfors.mandelbrot.io.Bookmark;
+import se.karnerfors.mandelbrot.io.BookmarkStore;
 import se.karnerfors.mandelbrot.io.MandelbrotConfig;
-import se.karnerfors.mandelbrot.io.MandelbrotConfigIO;
 import se.karnerfors.mandelbrot.io.PaletteLibrary;
 import se.karnerfors.mandelbrot.io.SessionState;
 import se.karnerfors.mandelbrot.io.SessionStore;
@@ -32,6 +30,7 @@ import se.karnerfors.mandelbrot.render.IterationGrid;
 import se.karnerfors.mandelbrot.render.JuliaPreset;
 import se.karnerfors.mandelbrot.render.RenderAlgorithm;
 import se.karnerfors.mandelbrot.render.RenderSettings;
+import se.karnerfors.mandelbrot.ui.BookmarkPopover;
 import se.karnerfors.mandelbrot.ui.ExportPanel;
 import se.karnerfors.mandelbrot.ui.FractalPanel;
 import se.karnerfors.mandelbrot.palette.Palette;
@@ -320,8 +319,30 @@ public class MandelbrotApp {
             exportDialog.setVisible(true);
         });
 
-        topBar.save.addActionListener(_ -> saveConfig(frame, fractalPanel));
-        topBar.load.addActionListener(_ -> loadConfig(frame, fractalPanel, syncFractalControls));
+        // Bookmarks: places you want to come back to (replaces the old Save/Load buttons).
+        BookmarkStore bookmarkStore = new BookmarkStore(SessionStore.defaultDirectory());
+        BookmarkPopover.Host bookmarkHost = new BookmarkPopover.Host() {
+            @Override
+            public MandelbrotConfig currentView() {
+                return MandelbrotConfig.capture(fractalPanel.getCurrentViewport(), fractalPanel.getPalette(),
+                        fractalPanel.getRenderSettings());
+            }
+
+            @Override
+            public java.awt.image.BufferedImage snapshot() {
+                return fractalPanel.snapshot();
+            }
+
+            @Override
+            public void open(Bookmark bookmark) {
+                closeEditor.run();
+                pickedName[0] = null;
+                fractalPanel.applyConfig(bookmark.view());
+                syncFractalControls.run();
+                recorder.markDirty();
+            }
+        };
+        topBar.bookmarks.addActionListener(_ -> BookmarkPopover.show(topBar.bookmarks, bookmarkStore, bookmarkHost));
         topBar.home.addActionListener(_ -> fractalPanel.goHome());
         topBar.back.addActionListener(_ -> fractalPanel.goBack());
         statusBar.goTo.addActionListener(_ -> fractalPanel.promptGoTo());
@@ -457,55 +478,5 @@ public class MandelbrotApp {
         public String toString() {
             return String.format("Mandelbrot position (%.8f %s %.8fi)", real, imaginary < 0 ? "-" : "+", Math.abs(imaginary));
         }
-    }
-
-    /** Saves the current view (center/zoom) and palette as a pretty-printed JSON config file. */
-    private static void saveConfig(JFrame frame, FractalPanel fractalPanel) {
-        JFileChooser chooser = new JFileChooser();
-        chooser.setFileFilter(new FileNameExtensionFilter("Mandelbrot config (*.json)", "json"));
-        chooser.setSelectedFile(new File("mandelbrot-config.json"));
-        if (chooser.showSaveDialog(frame) != JFileChooser.APPROVE_OPTION) {
-            return;
-        }
-        File file = withJsonExtension(chooser.getSelectedFile());
-        MandelbrotConfig config = MandelbrotConfig.capture(fractalPanel.getCurrentViewport(), fractalPanel.getPalette(),
-                fractalPanel.getRenderSettings());
-        try {
-            MandelbrotConfigIO.saveJson(file, config);
-        } catch (IOException ex) {
-            JOptionPane.showMessageDialog(frame, "Failed to save: " + ex.getMessage(), "Save failed",
-                    JOptionPane.ERROR_MESSAGE);
-        }
-    }
-
-    /**
-     * Loads a {@link MandelbrotConfig} from either a {@code .json} config
-     * file or a {@code .png} previously exported by this app (the config is
-     * embedded as metadata in every exported PNG), and jumps the live view
-     * to it. Window size is left untouched -- only center, zoom, and
-     * palette are restored.
-     */
-    private static void loadConfig(JFrame frame, FractalPanel fractalPanel, Runnable syncFractalControls) {
-        JFileChooser chooser = new JFileChooser();
-        chooser.setFileFilter(new FileNameExtensionFilter("Mandelbrot config (*.json, *.png)", "json", "png"));
-        if (chooser.showOpenDialog(frame) != JFileChooser.APPROVE_OPTION) {
-            return;
-        }
-        File file = chooser.getSelectedFile();
-        try {
-            MandelbrotConfig config = MandelbrotConfigIO.load(file);
-            fractalPanel.applyConfig(config);
-            syncFractalControls.run();
-        } catch (IOException ex) {
-            JOptionPane.showMessageDialog(frame, "Failed to load: " + ex.getMessage(), "Load failed",
-                    JOptionPane.ERROR_MESSAGE);
-        }
-    }
-
-    private static File withJsonExtension(File file) {
-        if (file.getName().toLowerCase().endsWith(".json")) {
-            return file;
-        }
-        return new File(file.getParentFile(), file.getName() + ".json");
     }
 }

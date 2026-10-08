@@ -151,6 +151,10 @@ public final class Theme {
             FlatLightLaf.setup();
         }
 
+        // A click outside an open popup (Palette, Bookmarks) only closes it; it must not also reach the canvas
+        // underneath and, say, recentre the view.
+        UIManager.put("PopupMenu.consumeEventOnClose", Boolean.TRUE);
+
         // Surfaces that FlatLaf paints for us should match our own tokens.
         UIManager.put("Panel.background", new ColorUIResource(color(Token.BAR)));
         UIManager.put("ToolTip.background", new ColorUIResource(color(Token.TEXT)));

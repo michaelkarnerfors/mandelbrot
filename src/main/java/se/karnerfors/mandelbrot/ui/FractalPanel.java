@@ -98,6 +98,9 @@ public final class FractalPanel extends JPanel {
     private RenderSettings renderSettings = RenderSettings.defaults();
 
     private volatile long renderGeneration = 0;
+
+    /** Which pass is drawing right now (UI thread only), so a refinement can be stopped the moment you move. */
+    private Pass runningPass;
     private final Deque<Viewport> history = new ArrayDeque<>();
 
     private final ExecutorService executor = newRenderExecutor();
@@ -134,6 +137,7 @@ public final class FractalPanel extends JPanel {
         MouseAdapter dragHandler = new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
+                stopRefinement();
                 dragStartX = e.getX();
                 dragStartY = e.getY();
                 if (SwingUtilities.isLeftMouseButton(e)) {
@@ -209,6 +213,7 @@ public final class FractalPanel extends JPanel {
         });
 
         addMouseWheelListener(e -> {
+            stopRefinement();
             double factor = Math.pow(WHEEL_ZOOM_STEP, -e.getPreciseWheelRotation());
             currentViewport = currentViewport.zoomedAround(e.getX(), e.getY(), factor);
             notifyViewportChanged();
@@ -222,6 +227,7 @@ public final class FractalPanel extends JPanel {
                 if (getWidth() <= 0 || getHeight() <= 0) {
                     return;
                 }
+                stopRefinement();
                 currentViewport = currentViewport.withSize(getWidth(), getHeight());
                 notifyViewportChanged();
                 repaint();
@@ -244,6 +250,19 @@ public final class FractalPanel extends JPanel {
 
     public Viewport getCurrentViewport() {
         return currentViewport;
+    }
+
+    /** What the panel shows right now, as an image of its own size (for bookmark thumbnails). Call on the UI thread. */
+    public BufferedImage snapshot() {
+        BufferedImage image = new BufferedImage(Math.max(1, getWidth()), Math.max(1, getHeight()),
+                BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = image.createGraphics();
+        try {
+            paint(g);
+        } finally {
+            g.dispose();
+        }
+        return image;
     }
 
     public boolean hasHistory() {
@@ -587,6 +606,24 @@ public final class FractalPanel extends JPanel {
         startPass(Pass.PREVIEW);
     }
 
+    /**
+     * Drops a refinement that is still drawing, at once, so dragging or zooming does not compete with it for
+     * the processors. The 1x preview stays on screen and the refinement starts over when the view is at rest
+     * again ({@link #tryStartRefine()}). A preview pass is left alone: it is what you are looking at.
+     */
+    private void stopRefinement() {
+        if (runningPass != Pass.REFINE) {
+            return;
+        }
+        runningPass = null;
+        renderGeneration++;
+        inProgressViewport = null;
+        progressiveImage = null;
+        pendingRefine = true;
+        reportStatus(RenderStatus.Stage.REFINING, settleFactor(), 0.0, -1);
+        repaint();
+    }
+
     private int settleFactor() {
         return Math.max(1, renderSettings.supersampleFactor());
     }
@@ -615,6 +652,7 @@ public final class FractalPanel extends JPanel {
         final RenderStatus.Stage stage = pass == Pass.PREVIEW ? RenderStatus.Stage.PREVIEW : RenderStatus.Stage.REFINING;
         final int oversampledTileSize = TILE_SIZE_FINAL_PIXELS * factor;
         final long myGeneration = ++renderGeneration;
+        runningPass = pass;
 
         final BufferedImage myProgressiveImage = new BufferedImage(target.width(), target.height(), BufferedImage.TYPE_INT_ARGB);
         this.inProgressViewport = target;
@@ -642,6 +680,7 @@ public final class FractalPanel extends JPanel {
                 if (myGeneration != renderGeneration) {
                     return; // superseded by a newer interaction -- discard
                 }
+                runningPass = null;
                 long elapsedMillis = (System.nanoTime() - renderStartNanos) / 1_000_000;
                 try {
                     IterationGrid grid = get();

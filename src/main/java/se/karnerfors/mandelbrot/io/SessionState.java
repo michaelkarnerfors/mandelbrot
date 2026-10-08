@@ -30,38 +30,9 @@ public record SessionState(int version, MandelbrotConfig view, int supersample, 
         }
     }
 
-    /** True when the saved view can safely be handed to the renderer: finite numbers, a sane palette, a positive zoom. */
+    /** True when the saved view can safely be handed to the renderer (see {@link MandelbrotConfig#isUsable()}). */
     public boolean hasUsableView() {
-        if (view == null || view.viewport() == null || view.palette() == null || view.fractal() == null) {
-            return false;
-        }
-        MandelbrotConfig.ViewportData viewport = view.viewport();
-        MandelbrotConfig.FractalData fractal = view.fractal();
-        if (!finite(viewport.real()) || !finite(viewport.imaginary()) || !finite(viewport.zoom()) || viewport.zoom() <= 0) {
-            return false;
-        }
-        if (!finite(fractal.cReal()) || !finite(fractal.cImaginary())) {
-            return false;
-        }
-        MandelbrotConfig.PaletteData palette = view.palette();
-        if (palette.stops() == null || palette.stops().size() < 2 || palette.stops().size() > 256
-                || palette.shadesPerSegment() < 1 || palette.shadesPerSegment() > 1024) {
-            return false;
-        }
-        for (MandelbrotConfig.RgbColor stop : palette.stops()) {
-            if (stop == null || !channel(stop.r()) || !channel(stop.g()) || !channel(stop.b())) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private static boolean finite(double value) {
-        return !Double.isNaN(value) && !Double.isInfinite(value);
-    }
-
-    private static boolean channel(int value) {
-        return value >= 0 && value <= 255;
+        return view != null && view.isUsable();
     }
 
     static int validFactor(int factor) {

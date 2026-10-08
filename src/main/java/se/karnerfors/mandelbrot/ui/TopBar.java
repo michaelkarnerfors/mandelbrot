@@ -44,8 +44,7 @@ public final class TopBar extends JPanel {
     public final JComboBox<Object> juliaC = new JComboBox<>();
     public final AppButton palette = new AppButton("Classic", null, AppButton.Style.OUTLINE, false);
     public final SegmentedControl<Integer> supersample;
-    public final AppButton save = new AppButton("Save…", null, AppButton.Style.OUTLINE, false);
-    public final AppButton load = new AppButton("Load…", null, AppButton.Style.OUTLINE, false);
+    public final AppButton bookmarks = new AppButton("Bookmarks", Icons.Glyph.STAR, AppButton.Style.OUTLINE, false);
     public final AppButton render = new AppButton("Render…", Icons.Glyph.RENDER, AppButton.Style.PRIMARY, false);
 
     private final ThemedLabel supersampleLabel = new ThemedLabel("SETTLE AT", Token.MUTED, Theme::groupLabelFont);
@@ -74,7 +73,9 @@ public final class TopBar extends JPanel {
         juliaC.setToolTipText("Julia constant c");
         back.setEnabled(false);
         palette.setToolTipText("Palettes");
+        bookmarks.setToolTipText("Bookmarks");
         labelled.add(palette);
+        labelled.add(bookmarks);
         labelled.add(render);
         applyJuliaComboWidth();
 
@@ -94,9 +95,7 @@ public final class TopBar extends JPanel {
         add(memoryNoteGap);
         add(center(memoryNote));
         add(Box.createHorizontalGlue());
-        add(center(save));
-        add(Box.createHorizontalStrut(6));
-        add(center(load));
+        add(center(bookmarks));
         add(Box.createHorizontalStrut(8));
         add(center(render));
 
