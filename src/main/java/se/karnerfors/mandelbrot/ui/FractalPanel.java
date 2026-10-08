@@ -71,7 +71,7 @@ public final class FractalPanel extends JPanel {
     /** Tile edge length in *final* (display) pixels; multiplied by the supersample factor for the actual grid tiling. */
     private static final int TILE_SIZE_FINAL_PIXELS = 24;
 
-    private enum Mode { NONE, SELECT, PAN }
+    private enum Mode { NONE, SELECT, PAN, TRACK }
 
     private Viewport currentViewport;
 
@@ -121,6 +121,27 @@ public final class FractalPanel extends JPanel {
     private Consumer<Viewport> viewportListener = _ -> { };
     private Consumer<RenderStatus> renderStatusListener = _ -> { };
     private Consumer<Complex> cursorMoveListener = _ -> { };
+    private Consumer<Palette> paletteListener = _ -> { };
+
+    /** What a left press and drag do instead of zooming, when this panel is used to pick a point. */
+    public interface PointTracker {
+        /** The button went down or moved while down, at this point. */
+        void moved(Complex point);
+
+        /** The button went up. */
+        void ended();
+
+        /** A second press in quick succession (no move or end follows it). */
+        void doubleClicked();
+    }
+
+    private PointTracker pointTracker;
+
+    /** While true, the refinement after a quick preview waits (it starts when this is set false again). */
+    private boolean refinementHeld;
+
+    /** A crosshair drawn at this point (the Julia constant, on the Mandelbrot picker), or null. */
+    private Complex marker;
 
     public FractalPanel(int initialWidth, int initialHeight) {
         setPreferredSize(new java.awt.Dimension(initialWidth, initialHeight));
@@ -140,7 +161,13 @@ public final class FractalPanel extends JPanel {
                 stopRefinement();
                 dragStartX = e.getX();
                 dragStartY = e.getY();
-                if (SwingUtilities.isLeftMouseButton(e)) {
+                if (SwingUtilities.isLeftMouseButton(e) && pointTracker != null && e.getClickCount() >= 2) {
+                    mode = Mode.NONE;
+                    pointTracker.doubleClicked();
+                } else if (SwingUtilities.isLeftMouseButton(e) && pointTracker != null) {
+                    mode = Mode.TRACK;
+                    pointTracker.moved(currentViewport.toComplex(e.getX(), e.getY()));
+                } else if (SwingUtilities.isLeftMouseButton(e)) {
                     mode = Mode.SELECT;
                     dragRect = new Rectangle(dragStartX, dragStartY, 0, 0);
                 } else if (SwingUtilities.isRightMouseButton(e)) {
@@ -155,7 +182,9 @@ public final class FractalPanel extends JPanel {
 
             @Override
             public void mouseDragged(MouseEvent e) {
-                if (mode == Mode.SELECT) {
+                if (mode == Mode.TRACK) {
+                    pointTracker.moved(currentViewport.toComplex(e.getX(), e.getY()));
+                } else if (mode == Mode.SELECT) {
                     dragRect = aspectLockedRect(dragStartX, dragStartY, e.getX(), e.getY());
                     repaint();
                 } else if (mode == Mode.PAN) {
@@ -170,7 +199,9 @@ public final class FractalPanel extends JPanel {
             public void mouseReleased(MouseEvent e) {
                 boolean click = false;
                 boolean leftButton = mode == Mode.SELECT;
-                if (mode == Mode.SELECT) {
+                if (mode == Mode.TRACK) {
+                    pointTracker.ended();
+                } else if (mode == Mode.SELECT) {
                     if (dragRect != null && dragRect.width >= MIN_DRAG_PX && dragRect.height >= MIN_DRAG_PX) {
                         commitZoomToRect(dragRect);
                     } else {
@@ -322,6 +353,7 @@ public final class FractalPanel extends JPanel {
      */
     public void setPalette(Palette newPalette, Runnable onComplete) {
         this.palette = newPalette;
+        paletteListener.accept(newPalette);
         this.liveRecolourWanted = false;
         final long mySeq = ++paletteSeq;
         if (lastGrid == null) {
@@ -368,6 +400,7 @@ public final class FractalPanel extends JPanel {
      */
     public void setPaletteLive(Palette newPalette) {
         this.palette = newPalette;
+        paletteListener.accept(newPalette);
         this.liveRecolourWanted = true;
         paletteSeq++;
         startLiveRecolour();
@@ -484,6 +517,12 @@ public final class FractalPanel extends JPanel {
         submitRender();
     }
 
+    /** Swaps the settings and jumps to {@code center} at {@code zoom}, with a single render. */
+    public void setRenderSettingsAndGoTo(RenderSettings newSettings, Complex center, double zoom) {
+        this.renderSettings = newSettings;
+        goTo(center, zoom);
+    }
+
     /** Swaps the settings and jumps to the home view for them, with a single render. */
     public void setRenderSettingsAndGoHome(RenderSettings newSettings) {
         this.renderSettings = newSettings;
@@ -501,6 +540,7 @@ public final class FractalPanel extends JPanel {
         history.push(currentViewport);
         currentViewport = config.toViewport(getWidth(), getHeight());
         this.palette = config.toPalette();
+        paletteListener.accept(palette);
         this.renderSettings = config.applyTo(renderSettings);
         notifyViewportChanged();
         repaint();
@@ -533,6 +573,33 @@ public final class FractalPanel extends JPanel {
 
     public void setRenderStatusListener(Consumer<RenderStatus> listener) {
         this.renderStatusListener = listener != null ? listener : _ -> { };
+    }
+
+    /** Told whenever the palette changes, so a second panel can follow it. */
+    public void setPaletteListener(Consumer<Palette> listener) {
+        this.paletteListener = listener != null ? listener : _ -> { };
+    }
+
+    /** Makes the left button pick points (press and drag) instead of zooming; the wheel and right button still work. */
+    public void setPointTracker(PointTracker tracker) {
+        this.pointTracker = tracker;
+    }
+
+    /** Holds back the 4x/9x refinement while something else is driving this panel quickly (a drag elsewhere). */
+    public void setRefinementHeld(boolean held) {
+        if (refinementHeld == held) {
+            return;
+        }
+        refinementHeld = held;
+        if (!held) {
+            tryStartRefine();
+        }
+    }
+
+    /** Shows a crosshair at {@code point}; null removes it. */
+    public void setMarker(Complex point) {
+        this.marker = point == null ? null : Complex.fromCartesian(point.real, point.imaginary);
+        repaint();
     }
 
     public void setCursorMoveListener(Consumer<Complex> listener) {
@@ -637,7 +704,7 @@ public final class FractalPanel extends JPanel {
 
     /** Starts the refinement if a preview is waiting for one and the view has come to rest. */
     private void tryStartRefine() {
-        if (pendingRefine && isViewSteady(committedViewport)) {
+        if (pendingRefine && !refinementHeld && isViewSteady(committedViewport)) {
             pendingRefine = false;
             startPass(Pass.REFINE);
         }
@@ -782,6 +849,10 @@ public final class FractalPanel extends JPanel {
         drawLayer((Graphics2D) g, renderedImage, committedViewport, live);
         drawLayer((Graphics2D) g, progressiveImage, inProgressViewport, live);
 
+        if (marker != null) {
+            paintMarker((Graphics2D) g);
+        }
+
         if (dragRect != null) {
             Graphics2D overlay = (Graphics2D) g.create();
             overlay.setColor(new Color(255, 255, 255, 60));
@@ -789,6 +860,39 @@ public final class FractalPanel extends JPanel {
             overlay.setColor(Color.WHITE);
             overlay.draw(dragRect);
             overlay.dispose();
+        }
+    }
+
+    private void paintMarker(Graphics2D g) {
+        Viewport live = effectiveLiveViewport();
+        double x = getWidth() / 2.0 + (marker.real - live.center().real) * live.zoom();
+        double y = getHeight() / 2.0 + (marker.imaginary - live.center().imaginary) * live.zoom();
+        if (x < -20 || y < -20 || x > getWidth() + 20 || y > getHeight() + 20) {
+            return;
+        }
+        Graphics2D m = (Graphics2D) g.create();
+        try {
+            m.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            java.awt.geom.Ellipse2D ring = new java.awt.geom.Ellipse2D.Double(x - 9, y - 9, 18, 18);
+            java.awt.geom.Path2D.Double ticks = new java.awt.geom.Path2D.Double();
+            ticks.moveTo(x, y - 18);
+            ticks.lineTo(x, y - 9);
+            ticks.moveTo(x, y + 9);
+            ticks.lineTo(x, y + 18);
+            ticks.moveTo(x - 18, y);
+            ticks.lineTo(x - 9, y);
+            ticks.moveTo(x + 9, y);
+            ticks.lineTo(x + 18, y);
+            m.setStroke(new java.awt.BasicStroke(4f, java.awt.BasicStroke.CAP_ROUND, java.awt.BasicStroke.JOIN_ROUND));
+            m.setColor(new Color(0, 0, 0, 140));
+            m.draw(ring);
+            m.draw(ticks);
+            m.setStroke(new java.awt.BasicStroke(2f, java.awt.BasicStroke.CAP_ROUND, java.awt.BasicStroke.JOIN_ROUND));
+            m.setColor(Color.WHITE);
+            m.draw(ring);
+            m.draw(ticks);
+        } finally {
+            m.dispose();
         }
     }
 

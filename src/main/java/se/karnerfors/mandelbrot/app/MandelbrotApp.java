@@ -30,6 +30,7 @@ import se.karnerfors.mandelbrot.io.PaletteLibrary;
 import se.karnerfors.mandelbrot.io.SessionState;
 import se.karnerfors.mandelbrot.io.SessionStore;
 import se.karnerfors.mandelbrot.math.Complex;
+import se.karnerfors.mandelbrot.math.Viewport;
 import se.karnerfors.mandelbrot.render.IterationGrid;
 import se.karnerfors.mandelbrot.render.RenderAlgorithm;
 import se.karnerfors.mandelbrot.render.RenderJob;
@@ -84,12 +85,18 @@ public class MandelbrotApp {
         AtomicReference<SessionState.ExportData> exportChoices =
                 new AtomicReference<>(remembered.map(SessionState::export).orElse(null));
         Rectangle[] normalBounds = { null };
+        JuliaSplit[] splitRef = { null };
         SessionRecorder recorder = new SessionRecorder(sessionStore, () -> new SessionState(SessionState.CURRENT_VERSION,
                 MandelbrotConfig.capture(fractalPanel.getCurrentViewport(), fractalPanel.getPalette(),
                         fractalPanel.getRenderSettings()),
                 fractalPanel.getRenderSettings().supersampleFactor(),
-                windowData(frame, normalBounds[0]), exportChoices.get()));
+                windowData(frame, normalBounds[0]), exportChoices.get(),
+                // Julia is showing: keep the zoom of the Mandelbrot view we came from (otherwise the view is it).
+                fractalPanel.getRenderSettings().algorithm() == RenderAlgorithm.JULIA && splitRef[0] != null
+                        ? splitRef[0].lastMandelbrotZoom() : null));
 
+        javax.swing.JPanel stage = new javax.swing.JPanel(new BorderLayout());
+        stage.add(fractalPanel, BorderLayout.CENTER);
         TopBar topBar = new TopBar(initialSettings.algorithm(), initialSettings.supersampleFactor());
         StatusBar statusBar = new StatusBar();
         topBar.palette.setExtraIcon(new PaletteSwatchIcon(fractalPanel::getPalette));
@@ -118,17 +125,23 @@ public class MandelbrotApp {
             recorder.markDirty();
         });
 
-        // Julia constant: the c chip shows it and opens the presets; in Mandelbrot mode "Julia from here" takes its place.
+        // Julia constant: the c chip shows it and opens the presets.
         JuliaPresetStore juliaPresets = new JuliaPresetStore(SessionStore.defaultDirectory());
 
         // Makes the fractal controls show what the render settings say (after startup, a load, a bookmark).
+        Runnable updateChip = () -> {
+            Complex c = fractalPanel.getRenderSettings().c();
+            JuliaPresetStore.Entry match = juliaPresets.findByValue(c.real, c.imaginary);
+            topBar.cChip.setValue(c.real, c.imaginary, match == null ? null : match.name());
+        };
         Runnable syncFractalControls = () -> {
             RenderSettings settings = fractalPanel.getRenderSettings();
             topBar.fractal.setSelectedSilently(settings.algorithm());
             topBar.showFractal(settings.algorithm());
-            Complex c = settings.c();
-            JuliaPresetStore.Entry match = juliaPresets.findByValue(c.real, c.imaginary);
-            topBar.cChip.setValue(c.real, c.imaginary, match == null ? null : match.name());
+            updateChip.run();
+            if (splitRef[0] != null) {
+                splitRef[0].refresh();
+            }
             updatePaletteLabel.run();
         };
         syncFractalControls.run();
@@ -139,14 +152,27 @@ public class MandelbrotApp {
             if (selected == current.algorithm()) {
                 return;
             }
-            // Switching to Julia keeps the c it had last; "Julia from here" is the way to pick a new one.
-            fractalPanel.setRenderSettingsAndGoHome(current.withAlgorithm(selected));
-            syncFractalControls.run();
-        });
-        topBar.juliaFromHere.addActionListener(_ -> {
-            Complex centre = fractalPanel.getCurrentViewport().center();
-            fractalPanel.setRenderSettingsAndGoHome(
-                    fractalPanel.getRenderSettings().withAlgorithm(RenderAlgorithm.JULIA).withC(centre));
+            Double zoomBack = null;
+            if (selected == RenderAlgorithm.MANDELBROT && splitRef[0] != null) {
+                zoomBack = splitRef[0].lastMandelbrotZoom();
+                splitRef[0].setActive(false);
+            }
+            RenderSettings next = current.withAlgorithm(selected);
+            if (selected == RenderAlgorithm.JULIA) {
+                // Mandelbrot -> Julia: the Julia set of the point the view is centred on. The split view's
+                // Mandelbrot pane picks up where this view was, with its crosshair on that point.
+                Viewport view = fractalPanel.getCurrentViewport();
+                next = next.withC(view.center());
+                if (splitRef[0] != null) {
+                    splitRef[0].rememberMandelbrotView(view.center(), view.zoom());
+                }
+            }
+            if (selected == RenderAlgorithm.MANDELBROT && zoomBack != null) {
+                // Julia -> Mandelbrot: centred on c, at the zoom the Mandelbrot side last had.
+                fractalPanel.setRenderSettingsAndGoTo(next, current.c(), zoomBack);
+            } else {
+                fractalPanel.setRenderSettingsAndGoHome(next);
+            }
             syncFractalControls.run();
             recorder.markDirty();
         });
@@ -164,6 +190,9 @@ public class MandelbrotApp {
             @Override
             public void apply(JuliaPresetStore.Entry entry) {
                 fractalPanel.setRenderSettingsAndGoHome(fractalPanel.getRenderSettings().withC(entry.c()));
+                if (splitRef[0] != null) {
+                    splitRef[0].lock();
+                }
                 syncFractalControls.run();
                 recorder.markDirty();
             }
@@ -310,6 +339,12 @@ public class MandelbrotApp {
                 closeEditor.run();
                 pickedName[0] = null;
                 fractalPanel.applyConfig(bookmark.view());
+                if (splitRef[0] != null) {
+                    if (bookmark.view().fractal().algorithm() != RenderAlgorithm.JULIA) {
+                        splitRef[0].setActive(false);
+                    }
+                    splitRef[0].lock();
+                }
                 syncFractalControls.run();
                 recorder.markDirty();
             }
@@ -347,6 +382,46 @@ public class MandelbrotApp {
             hoverPoint.set(point);
             refreshStatus.run();
         }));
+
+        // The Julia explorer: the Mandelbrot set beside the Julia set, where the pointer chooses c.
+        JuliaSplit split = new JuliaSplit(frame, stage, fractalPanel, new JuliaSplit.Host() {
+            @Override
+            public void cChosen(Complex c) {
+                RenderSettings settings = fractalPanel.getRenderSettings();
+                Complex now = settings.c();
+                if (now.real == c.real && now.imaginary == c.imaginary) {
+                    return;
+                }
+                fractalPanel.setRenderSettings(settings.withC(c));
+                updateChip.run();
+                recorder.markDirty();
+            }
+
+            @Override
+            public void pickerCursor(Complex point) {
+                SwingUtilities.invokeLater(() -> {
+                    hoverPoint.set(point);
+                    refreshStatus.run();
+                });
+            }
+
+            @Override
+            public void activeChanged(boolean active) {
+                topBar.setSplitActive(active);
+            }
+
+            @Override
+            public Complex currentC() {
+                return fractalPanel.getRenderSettings().c();
+            }
+        });
+        splitRef[0] = split;
+        remembered.map(SessionState::mandelbrotZoom).ifPresent(split::setLastMandelbrotZoom);
+        topBar.split.addActionListener(_ -> {
+            if (topBar.split.isEnabled()) {
+                split.setActive(!split.isActive());
+            }
+        });
 
         // Render…: pictures are added to a queue that draws them one at a time in the background.
         RenderQueue renderQueue = new RenderQueue();
@@ -488,7 +563,7 @@ public class MandelbrotApp {
         });
 
         frame.getContentPane().add(topBar, BorderLayout.NORTH);
-        frame.getContentPane().add(fractalPanel, BorderLayout.CENTER);
+        frame.getContentPane().add(stage, BorderLayout.CENTER);
         frame.getContentPane().add(statusBar, BorderLayout.SOUTH);
 
         frame.pack();

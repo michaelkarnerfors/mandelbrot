@@ -4,7 +4,8 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 /**
  * What the app remembers from one run to the next: where you were looking, how it was coloured,
- * the supersample factor, the window, and the last export choices. Written to
+ * the supersample factor, the window, and the last export choices. While Julia is showing it also keeps
+ * the zoom of the Mandelbrot view you came from ({@code mandelbrotZoom}), so going back lands at that zoom. Written to
  * {@code ~/mandelbrot/state.json} by {@link SessionStore}.
  *
  * <p>The view part is a plain {@link MandelbrotConfig}, the same shape bookmarks will use later, so
@@ -13,7 +14,8 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
  * hand-edited, truncated, or written by a different version.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
-public record SessionState(int version, MandelbrotConfig view, int supersample, WindowData window, ExportData export) {
+public record SessionState(int version, MandelbrotConfig view, int supersample, WindowData window, ExportData export,
+        Double mandelbrotZoom) {
 
     /** Bump when the shape of this record changes incompatibly. */
     public static final int CURRENT_VERSION = 1;
@@ -28,6 +30,14 @@ public record SessionState(int version, MandelbrotConfig view, int supersample, 
         if (export != null && !export.valid()) {
             export = null;
         }
+        if (mandelbrotZoom != null && (!Double.isFinite(mandelbrotZoom) || mandelbrotZoom <= 0)) {
+            mandelbrotZoom = null;
+        }
+    }
+
+    /** Without a remembered Mandelbrot zoom (the view itself is the Mandelbrot one, or nothing was kept). */
+    public SessionState(int version, MandelbrotConfig view, int supersample, WindowData window, ExportData export) {
+        this(version, view, supersample, window, export, null);
     }
 
     /** True when the saved view can safely be handed to the renderer (see {@link MandelbrotConfig#isUsable()}). */

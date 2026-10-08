@@ -43,8 +43,9 @@ public final class TopBar extends JPanel {
     public final SegmentedControl<RenderAlgorithm> fractal;
     /** Julia mode: the constant c, which opens the presets. */
     public final CChip cChip = new CChip();
-    /** Mandelbrot mode: start a Julia view from the point the view is centred on. */
-    public final AppButton juliaFromHere = new AppButton("Julia from here", Icons.Glyph.TARGET, AppButton.Style.OUTLINE, false);
+    /** Julia mode only: shows the Mandelbrot set beside the Julia set, where the pointer chooses c. */
+    public final AppButton split = AppButton.iconButton(Icons.Glyph.SPLIT, "Split view: Mandelbrot beside Julia",
+            AppButton.Style.GHOST, false);
     public final AppButton palette = new AppButton("Classic", null, AppButton.Style.OUTLINE, false);
     public final SegmentedControl<Integer> supersample;
     public final AppButton bookmarks = new AppButton("Bookmarks", Icons.Glyph.STAR, AppButton.Style.OUTLINE, false);
@@ -81,19 +82,15 @@ public final class TopBar extends JPanel {
         memoryNote.setHorizontalAlignment(javax.swing.SwingConstants.LEFT);
         memoryNote.setVisible(false); // takes no room until there is something to warn about
         memoryNoteGap.setVisible(false);
-        juliaFromHere.setToolTipText("<html>Julia set for the point at the centre of this view.<br>"
-                + "<i>Pick the place first, then look at its Julia set.</i></html>");
         cSlot.setOpaque(false);
-        JPanel fromHereHolder = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 0, 0));
-        fromHereHolder.setOpaque(false);
-        fromHereHolder.add(juliaFromHere);
-        cSlot.add(fromHereHolder, RenderAlgorithm.MANDELBROT.name());
+        JPanel blank = new JPanel(); // keeps the bar from shifting when c is not shown
+        blank.setOpaque(false);
+        cSlot.add(blank, RenderAlgorithm.MANDELBROT.name());
         cSlot.add(cChip, RenderAlgorithm.JULIA.name());
         showFractal(algorithm);
         back.setEnabled(false);
         palette.setToolTipText("Palettes");
         bookmarks.setToolTipText("Bookmarks");
-        labelled.add(juliaFromHere);
         labelled.add(palette);
         labelled.add(bookmarks);
         labelled.add(render);
@@ -103,6 +100,8 @@ public final class TopBar extends JPanel {
         add(center(back));
         add(separator());
         add(center(fractal));
+        add(Box.createHorizontalStrut(4));
+        add(center(split));
         add(Box.createHorizontalStrut(8));
         add(center(cSlot));
         add(separator());
@@ -129,8 +128,15 @@ public final class TopBar extends JPanel {
         });
     }
 
-    /** Shows the c chip in Julia mode and "Julia from here" in Mandelbrot mode. */
+    /** Lights the split button while the Mandelbrot picker is showing. */
+    public void setSplitActive(boolean active) {
+        split.setStyle(active ? AppButton.Style.ON : AppButton.Style.GHOST);
+        split.setToolTipText(active ? "Back to a single Julia view" : "Split view: Mandelbrot beside Julia");
+    }
+
+    /** Shows the c chip in Julia mode (and keeps its room free in Mandelbrot mode). */
     public void showFractal(RenderAlgorithm algorithm) {
+        split.setEnabled(algorithm == RenderAlgorithm.JULIA);
         ((CardLayout) cSlot.getLayout()).show(cSlot, algorithm.name());
     }
 

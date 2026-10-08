@@ -10,7 +10,9 @@ import java.awt.Shape;
 import java.awt.geom.Area;
 import java.awt.geom.Ellipse2D;
 import java.awt.geom.Line2D;
+import java.awt.geom.Arc2D;
 import java.awt.geom.Path2D;
+import java.awt.geom.RoundRectangle2D;
 
 import javax.swing.Icon;
 import javax.swing.UIManager;
@@ -23,7 +25,7 @@ import javax.swing.UIManager;
 public final class Icons {
 
     public enum Glyph {
-        HOME, BACK, RENDER, CHEVRON_DOWN, CHEVRON_UP, TARGET, SUN, MOON, CHECK, PLUS, MINUS, CLOSE, EDIT, TRASH, STAR, UPLOAD, SEARCH, OPEN, FOLDER, ALERT
+        HOME, BACK, RENDER, CHEVRON_DOWN, CHEVRON_UP, TARGET, SUN, MOON, CHECK, PLUS, MINUS, CLOSE, EDIT, TRASH, STAR, UPLOAD, SEARCH, OPEN, FOLDER, ALERT, COPY, SPLIT
     }
 
     private Icons() {
@@ -149,6 +151,11 @@ public final class Icons {
                 crescent.subtract(new Area(new Ellipse2D.Double(9.5, 0.5, 14, 14)));
                 return new Shape[] { crescent };
             }
+            case COPY:
+                return new Shape[] { new RoundRectangle2D.Double(9, 9, 11, 11, 4, 4),
+                        poly(false, 5, 15, 5, 6, 7, 4, 16, 4) };
+            case SPLIT:
+                return new Shape[] { new RoundRectangle2D.Double(3, 4, 18, 16, 4, 4), new Line2D.Double(12, 4, 12, 20) };
             default:
                 return new Shape[0];
         }
