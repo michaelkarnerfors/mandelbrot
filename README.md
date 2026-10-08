@@ -11,7 +11,8 @@ An interactive Mandelbrot set explorer written in Java (Swing), with multithread
 - **Supersampling**: 1x, 2x, 4x, or 9x antialiasing from the toolbar. Samples are averaged in gamma-approximated space to match the palette blending.
 - **Palette editor** (**Palette…**): add, remove, and reorder color stops, and set how many shades are interpolated between stops. The preview updates immediately; the fractal recolors on **Apply** or **Done**, and **Cancel** reverts.
 - **Render to file** (**Render…**): export a PNG at the current window size or at presets from 1024 px wide up to 8K (4:3, 16:9, and 21:9), with any supersample factor. Center (Re/Im) and zoom are prefilled from the current view and can be edited. Exports run in the background with a progress bar and Cancel. Memory use is bounded by the output image size, not by the supersampled size.
-- **Status bar**: the complex coordinate under the cursor and the current zoom level.
+- **Status bar**: the complex coordinate under the cursor, the current zoom level, **Go to…** (centre on exact Re, Im and zoom; pasting `-0.7436 + 0.1318i` into Re fills both), and the render status.
+- **Light and dark theme**: switch with the sun/moon button at the right of the status bar, or start dark with `-Dmandelbrot.theme=dark`. The UI uses [FlatLaf](https://www.formdev.com/flatlaf/) and the bundled IBM Plex fonts (SIL Open Font License, see `src/main/resources/fonts/OFL.txt`).
 
 ## Requirements
 

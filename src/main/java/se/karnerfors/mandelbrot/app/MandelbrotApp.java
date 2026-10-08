@@ -1,108 +1,73 @@
 package se.karnerfors.mandelbrot.app;
 
 import java.awt.BorderLayout;
+import java.awt.Dimension;
 import java.io.File;
 import java.io.IOException;
 import java.util.concurrent.atomic.AtomicReference;
 
-import javax.swing.BorderFactory;
-import javax.swing.ButtonGroup;
-import javax.swing.JButton;
-import javax.swing.JComboBox;
 import javax.swing.JDialog;
 import javax.swing.JFileChooser;
 import javax.swing.JFrame;
-import javax.swing.JLabel;
 import javax.swing.JOptionPane;
-import javax.swing.JPanel;
-import javax.swing.JRadioButton;
-import javax.swing.JToolBar;
-import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 import javax.swing.filechooser.FileNameExtensionFilter;
 
 import se.karnerfors.mandelbrot.io.MandelbrotConfig;
 import se.karnerfors.mandelbrot.io.MandelbrotConfigIO;
 import se.karnerfors.mandelbrot.math.Complex;
-import se.karnerfors.mandelbrot.math.Viewport;
 import se.karnerfors.mandelbrot.render.JuliaPreset;
 import se.karnerfors.mandelbrot.render.RenderAlgorithm;
 import se.karnerfors.mandelbrot.render.RenderSettings;
 import se.karnerfors.mandelbrot.ui.ExportPanel;
 import se.karnerfors.mandelbrot.ui.FractalPanel;
 import se.karnerfors.mandelbrot.ui.PaletteEditorPanel;
+import se.karnerfors.mandelbrot.ui.PaletteSwatchIcon;
 import se.karnerfors.mandelbrot.ui.RenderStatus;
+import se.karnerfors.mandelbrot.ui.StatusBar;
+import se.karnerfors.mandelbrot.ui.Theme;
+import se.karnerfors.mandelbrot.ui.TopBar;
 
 public class MandelbrotApp {
+
+    /** {@code -Dmandelbrot.theme=dark} starts in the dark theme; the status bar switch changes it at runtime. */
+    private static final String THEME_PROPERTY = "mandelbrot.theme";
 
     public static void main(String[] args) {
         SwingUtilities.invokeLater(MandelbrotApp::createAndShowGui);
     }
 
     private static void createAndShowGui() {
-        FractalPanel fractalPanel = new FractalPanel(1000, 700);
+        Theme.install("dark".equalsIgnoreCase(System.getProperty(THEME_PROPERTY)) ? Theme.Mode.DARK : Theme.Mode.LIGHT);
 
-        JFrame frame = new JFrame("Mandelbrot — " + fractalPanel.getWorkerThreadCount() + " render threads");
+        FractalPanel fractalPanel = new FractalPanel(1000, 700);
+        RenderSettings initialSettings = fractalPanel.getRenderSettings();
+
+        JFrame frame = new JFrame("Mandelbrot / Julia — " + fractalPanel.getWorkerThreadCount() + " render threads");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 
-        JButton homeButton = new JButton("Home");
-        JButton backButton = new JButton("Back");
-        backButton.setEnabled(false);
-        JButton paletteButton = new JButton("Palette…");
-        JButton renderButton = new JButton("Render…");
-        JButton saveButton = new JButton("Save…");
-        JButton loadButton = new JButton("Load…");
+        TopBar topBar = new TopBar(initialSettings.algorithm(), initialSettings.supersampleFactor());
+        StatusBar statusBar = new StatusBar();
+        topBar.palette.setExtraIcon(new PaletteSwatchIcon(fractalPanel::getPalette));
 
-        JToolBar toolBar = new JToolBar();
-        toolBar.setFloatable(false);
-        toolBar.add(homeButton);
-        toolBar.add(backButton);
-        toolBar.add(paletteButton);
-        toolBar.add(renderButton);
-        toolBar.addSeparator();
-        toolBar.add(saveButton);
-        toolBar.add(loadButton);
-        toolBar.addSeparator();
-        toolBar.add(new JLabel("Supersample: "));
+        topBar.supersample.setChangeListener(factor ->
+                fractalPanel.setRenderSettings(fractalPanel.getRenderSettings().withSupersampleFactor(factor)));
 
-        ButtonGroup supersampleGroup = new ButtonGroup();
-        int currentFactor = fractalPanel.getRenderSettings().supersampleFactor();
-        for (int factor : new int[] { 1, 2, 4, 9 }) {
-            JRadioButton radio = new JRadioButton(factor + "x", factor == currentFactor);
-            radio.addActionListener(_ -> {
-                fractalPanel.setRenderSettings(fractalPanel.getRenderSettings().withSupersampleFactor(factor));
-            });
-            supersampleGroup.add(radio);
-            toolBar.add(radio);
-        }
-
-        toolBar.addSeparator();
-        toolBar.add(new JLabel("Fractal: "));
-
-        JComboBox<RenderAlgorithm> fractalSelector = new JComboBox<>(RenderAlgorithm.values());
-        fractalSelector.setSelectedItem(fractalPanel.getRenderSettings().algorithm());
-        fractalSelector.setMaximumSize(fractalSelector.getPreferredSize());
-        toolBar.add(fractalSelector);
-
-        toolBar.add(new JLabel("  Julia c: "));
+        // Julia constant: the Mandelbrot position the view was centred on, plus the famous presets.
         MandelbrotPosition mandelbrotPosition = new MandelbrotPosition(fractalPanel.getCurrentViewport().center());
-        JComboBox<Object> presetSelector = new JComboBox<>();
-        presetSelector.addItem(mandelbrotPosition);
+        topBar.juliaC.addItem(mandelbrotPosition);
         for (JuliaPreset preset : JuliaPreset.values()) {
-            presetSelector.addItem(preset);
+            topBar.juliaC.addItem(preset);
         }
-        presetSelector.setSelectedItem(JuliaPreset.DOUADY_RABBIT);
-        presetSelector.setPrototypeDisplayValue(new MandelbrotPosition(Complex.fromCartesian(-0.12345678, -0.12345678)));
-        presetSelector.setMaximumSize(presetSelector.getPreferredSize());
+        topBar.juliaC.setSelectedItem(JuliaPreset.DOUADY_RABBIT);
+        topBar.juliaC.setPrototypeDisplayValue(new MandelbrotPosition(Complex.fromCartesian(-0.12345678, -0.12345678)));
+        topBar.juliaC.setEnabled(initialSettings.algorithm() == RenderAlgorithm.JULIA);
         boolean[] updatingPresets = { false };
-        presetSelector.setEnabled(fractalPanel.getRenderSettings().algorithm() == RenderAlgorithm.JULIA);
-        toolBar.add(presetSelector);
 
-        fractalSelector.addActionListener(_ -> {
-            RenderAlgorithm selected = (RenderAlgorithm) fractalSelector.getSelectedItem();
+        topBar.fractal.setChangeListener(selected -> {
             RenderSettings current = fractalPanel.getRenderSettings();
-            presetSelector.setEnabled(selected == RenderAlgorithm.JULIA);
-            if (selected == null || selected == current.algorithm()) {
+            topBar.juliaC.setEnabled(selected == RenderAlgorithm.JULIA);
+            if (selected == current.algorithm()) {
                 return;
             }
             RenderSettings next = current.withAlgorithm(selected);
@@ -111,18 +76,18 @@ public class MandelbrotApp {
                 Complex centre = fractalPanel.getCurrentViewport().center();
                 mandelbrotPosition.set(centre);
                 updatingPresets[0] = true;
-                presetSelector.setSelectedItem(mandelbrotPosition);
+                topBar.juliaC.setSelectedItem(mandelbrotPosition);
                 updatingPresets[0] = false;
-                presetSelector.repaint();
+                topBar.juliaC.repaint();
                 next = next.withC(centre);
             }
             fractalPanel.setRenderSettingsAndGoHome(next);
         });
-        presetSelector.addActionListener(_ -> {
+        topBar.juliaC.addActionListener(_ -> {
             if (updatingPresets[0]) {
                 return;
             }
-            Object selected = presetSelector.getSelectedItem();
+            Object selected = topBar.juliaC.getSelectedItem();
             if (selected instanceof JuliaPreset preset) {
                 fractalPanel.setRenderSettingsAndGoHome(fractalPanel.getRenderSettings().withC(preset.c()));
             } else if (selected instanceof MandelbrotPosition position) {
@@ -130,13 +95,13 @@ public class MandelbrotApp {
             }
         });
 
-        // After a Load: make the two dropdowns show what the loaded config put into the render settings.
+        // After a Load: make the fractal controls show what the loaded config put into the render settings.
         Runnable syncFractalControls = () -> {
             RenderSettings settings = fractalPanel.getRenderSettings();
             updatingPresets[0] = true;
             try {
-                fractalSelector.setSelectedItem(settings.algorithm());
-                presetSelector.setEnabled(settings.algorithm() == RenderAlgorithm.JULIA);
+                topBar.fractal.setSelectedSilently(settings.algorithm());
+                topBar.juliaC.setEnabled(settings.algorithm() == RenderAlgorithm.JULIA);
                 Object match = mandelbrotPosition;
                 for (JuliaPreset preset : JuliaPreset.values()) {
                     Complex presetC = preset.c();
@@ -148,25 +113,28 @@ public class MandelbrotApp {
                 if (match == mandelbrotPosition) {
                     mandelbrotPosition.set(settings.c());
                 }
-                presetSelector.setSelectedItem(match);
+                topBar.juliaC.setSelectedItem(match);
             } finally {
                 updatingPresets[0] = false;
             }
-            presetSelector.repaint();
+            topBar.juliaC.repaint();
+            topBar.palette.repaint();
         };
 
-        paletteButton.addActionListener(_ -> {
+        topBar.palette.addActionListener(_ -> {
             JDialog paletteDialog = new JDialog(frame, "Edit Palette", false);
             paletteDialog.setResizable(false);
-            PaletteEditorPanel editor = new PaletteEditorPanel(fractalPanel.getPalette(), fractalPanel::setPalette,
-                    () -> paletteDialog.setVisible(false));
+            PaletteEditorPanel editor = new PaletteEditorPanel(fractalPanel.getPalette(), (palette, done) -> {
+                fractalPanel.setPalette(palette, done);
+                topBar.palette.repaint();
+            }, () -> paletteDialog.setVisible(false));
             paletteDialog.getContentPane().add(editor);
             paletteDialog.pack();
             paletteDialog.setLocationRelativeTo(frame);
             paletteDialog.setVisible(true);
         });
 
-        renderButton.addActionListener(_ -> {
+        topBar.render.addActionListener(_ -> {
             JDialog exportDialog = new JDialog(frame, "Render to File", true);
             exportDialog.setResizable(false);
             ExportPanel exportPanel = new ExportPanel(fractalPanel.getWidth(), fractalPanel.getHeight(),
@@ -178,41 +146,30 @@ public class MandelbrotApp {
             exportDialog.setVisible(true);
         });
 
-        saveButton.addActionListener(_ -> saveConfig(frame, fractalPanel));
-        loadButton.addActionListener(_ -> loadConfig(frame, fractalPanel, syncFractalControls));
-
-        JLabel hintLabel = new JLabel(" Left-drag: zoom to region   ·   Right-drag: pan   ·   Wheel: zoom ");
-        JLabel infoLabel = new JLabel("", SwingConstants.RIGHT);
-
-        JPanel statusBar = new JPanel(new BorderLayout());
-        statusBar.add(hintLabel, BorderLayout.WEST);
-        statusBar.add(infoLabel, BorderLayout.EAST);
-        statusBar.setBorder(BorderFactory.createEmptyBorder(2, 8, 2, 8));
+        topBar.save.addActionListener(_ -> saveConfig(frame, fractalPanel));
+        topBar.load.addActionListener(_ -> loadConfig(frame, fractalPanel, syncFractalControls));
+        topBar.home.addActionListener(_ -> fractalPanel.goHome());
+        topBar.back.addActionListener(_ -> fractalPanel.goBack());
+        statusBar.goTo.addActionListener(_ -> fractalPanel.promptGoTo());
+        statusBar.themeToggle.addActionListener(_ -> {
+            Theme.toggle();
+            statusBar.syncThemeToggle();
+        });
 
         AtomicReference<RenderStatus> latestStatus = new AtomicReference<>(new RenderStatus(false, 0.0, -1));
         AtomicReference<Complex> hoverPoint = new AtomicReference<>();
 
         Runnable refreshStatus = () -> {
-            backButton.setEnabled(fractalPanel.hasHistory());
-            Viewport viewport = fractalPanel.getCurrentViewport();
-            StringBuilder text = new StringBuilder();
-            Complex hover = hoverPoint.get();
-            if (hover != null) {
-                text.append(String.format("Re: %.6f  Im: %.6f   ", hover.real, hover.imaginary));
-            }
-            text.append(String.format("Zoom: %.3e", viewport.zoom()));
+            topBar.back.setEnabled(fractalPanel.hasHistory());
+            statusBar.setZoom(fractalPanel.getCurrentViewport().zoom());
+            statusBar.setCursorPoint(hoverPoint.get());
             RenderStatus status = latestStatus.get();
             if (status.rendering()) {
-                text.append(String.format("   Rendering… %.0f%%", status.progress() * 100));
-            } else if (status.lastRenderMillis() >= 0) {
-                text.append(String.format("   Last render: %.2fs", status.lastRenderMillis() / 1000.0));
+                statusBar.showRendering(status.progress());
+            } else {
+                statusBar.showIdle(status.lastRenderMillis());
             }
-            text.append(' ');
-            infoLabel.setText(text.toString());
         };
-
-        homeButton.addActionListener(_ -> fractalPanel.goHome());
-        backButton.addActionListener(_ -> fractalPanel.goBack());
 
         fractalPanel.setViewportListener(_ -> SwingUtilities.invokeLater(refreshStatus));
         fractalPanel.setRenderStatusListener(status -> SwingUtilities.invokeLater(() -> {
@@ -224,13 +181,15 @@ public class MandelbrotApp {
             refreshStatus.run();
         }));
 
-        frame.getContentPane().add(toolBar, BorderLayout.NORTH);
+        frame.getContentPane().add(topBar, BorderLayout.NORTH);
         frame.getContentPane().add(fractalPanel, BorderLayout.CENTER);
         frame.getContentPane().add(statusBar, BorderLayout.SOUTH);
 
         frame.pack();
+        frame.setMinimumSize(new Dimension(900, 560));
         frame.setLocationRelativeTo(null);
         frame.setVisible(true);
+        SwingUtilities.invokeLater(fractalPanel::requestFocusInWindow);
 
         refreshStatus.run();
     }

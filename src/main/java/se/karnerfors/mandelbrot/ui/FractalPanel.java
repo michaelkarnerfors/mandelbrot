@@ -5,7 +5,6 @@ import java.awt.Color;
 import java.awt.Cursor;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
-import java.awt.GridLayout;
 import java.awt.IllegalComponentStateException;
 import java.awt.Point;
 import java.awt.Rectangle;
@@ -24,10 +23,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.function.Consumer;
 
-import javax.swing.JLabel;
-import javax.swing.JOptionPane;
 import javax.swing.JPanel;
-import javax.swing.JTextField;
 import javax.swing.SwingUtilities;
 import javax.swing.SwingWorker;
 import javax.swing.Timer;
@@ -368,36 +364,22 @@ public final class FractalPanel extends JPanel {
     }
 
     private void promptForCenter(Complex initial) {
-        JTextField reField = new JTextField(Double.toString(initial.real), 18);
-        JTextField imField = new JTextField(Double.toString(initial.imaginary), 18);
-        JPanel form = new JPanel(new GridLayout(2, 2, 6, 6));
-        form.add(new JLabel("Re:"));
-        form.add(reField);
-        form.add(new JLabel("Im:"));
-        form.add(imField);
-
-        while (true) {
-            int choice = JOptionPane.showConfirmDialog(SwingUtilities.getWindowAncestor(this), form,
-                    "Centre on coordinate", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
-            if (choice != JOptionPane.OK_OPTION) {
-                return;
-            }
-            try {
-                centerOn(Complex.fromCartesian(parseCoordinate(reField.getText()), parseCoordinate(imField.getText())));
-                return;
-            } catch (NumberFormatException ex) {
-                JOptionPane.showMessageDialog(this, "Enter the real and imaginary parts as decimal numbers.",
-                        "Invalid coordinate", JOptionPane.ERROR_MESSAGE);
-            }
-        }
+        GoToDialog.show(SwingUtilities.getWindowAncestor(this), initial, currentViewport.zoom(), this::goTo);
     }
 
-    private static double parseCoordinate(String text) {
-        double value = Double.parseDouble(text.trim().replace(',', '.'));
-        if (!Double.isFinite(value)) {
-            throw new NumberFormatException("not finite: " + text);
-        }
-        return value;
+    /** Opens the Go to dialog pre-filled with the current centre and zoom. */
+    public void promptGoTo() {
+        GoToDialog.show(SwingUtilities.getWindowAncestor(this), currentViewport.center(), currentViewport.zoom(),
+                this::goTo);
+    }
+
+    /** Jumps to {@code center} at {@code zoom}; Back returns to the previous view. */
+    public void goTo(Complex center, double zoom) {
+        history.push(currentViewport);
+        currentViewport = new Viewport(center, zoom, getWidth(), getHeight());
+        notifyViewportChanged();
+        repaint();
+        submitRender();
     }
 
     public void setRenderSettings(RenderSettings newSettings) {
