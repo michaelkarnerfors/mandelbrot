@@ -1,0 +1,13 @@
+# Keep line endings consistent regardless of each machine's core.autocrlf.
+* text=auto
+*.java text eol=lf
+*.xml  text eol=lf
+*.md   text eol=lf
+*.json text eol=lf
+*.txt  text eol=lf
+*.properties text eol=lf
+mvnw   text eol=lf
+*.cmd  text eol=crlf
+*.png  binary
+*.ttf  binary
+*.class binary

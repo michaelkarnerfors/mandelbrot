@@ -410,6 +410,26 @@ public final class FractalPanel extends JPanel {
         submitRender();
     }
 
+    /**
+     * Restores the view remembered from the previous run: same position, palette, fractal and
+     * supersample factor, but no history entry and no explicit render -- the first layout pass of the
+     * window renders it. Only meant to be called before the window is shown.
+     */
+    public void restoreSession(MandelbrotConfig view, int supersampleFactor) {
+        java.awt.Dimension size = getPreferredSize();
+        int width = getWidth() > 0 ? getWidth() : size.width;
+        int height = getHeight() > 0 ? getHeight() : size.height;
+        // Build everything first so a bad palette can't leave the panel half restored.
+        Viewport restoredViewport = view.toViewport(width, height);
+        Palette restoredPalette = view.toPalette();
+        RenderSettings restoredSettings = view.applyTo(renderSettings).withSupersampleFactor(supersampleFactor);
+        currentViewport = restoredViewport;
+        palette = restoredPalette;
+        renderSettings = restoredSettings;
+        notifyViewportChanged();
+        repaint();
+    }
+
     public void setViewportListener(Consumer<Viewport> listener) {
         this.viewportListener = listener != null ? listener : _ -> { };
     }

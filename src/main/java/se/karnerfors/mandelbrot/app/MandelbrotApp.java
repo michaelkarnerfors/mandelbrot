@@ -2,8 +2,16 @@ package se.karnerfors.mandelbrot.app;
 
 import java.awt.BorderLayout;
 import java.awt.Dimension;
+import java.awt.GraphicsDevice;
+import java.awt.GraphicsEnvironment;
+import java.awt.Rectangle;
+import java.awt.event.ComponentAdapter;
+import java.awt.event.ComponentEvent;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import java.io.File;
 import java.io.IOException;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 
 import javax.swing.JDialog;
@@ -15,6 +23,8 @@ import javax.swing.filechooser.FileNameExtensionFilter;
 
 import se.karnerfors.mandelbrot.io.MandelbrotConfig;
 import se.karnerfors.mandelbrot.io.MandelbrotConfigIO;
+import se.karnerfors.mandelbrot.io.SessionState;
+import se.karnerfors.mandelbrot.io.SessionStore;
 import se.karnerfors.mandelbrot.math.Complex;
 import se.karnerfors.mandelbrot.render.JuliaPreset;
 import se.karnerfors.mandelbrot.render.RenderAlgorithm;
@@ -33,6 +43,9 @@ public class MandelbrotApp {
     /** {@code -Dmandelbrot.theme=dark} starts in the dark theme; the status bar switch changes it at runtime. */
     private static final String THEME_PROPERTY = "mandelbrot.theme";
 
+    private static final int MIN_WIDTH = 900;
+    private static final int MIN_HEIGHT = 560;
+
     public static void main(String[] args) {
         SwingUtilities.invokeLater(MandelbrotApp::createAndShowGui);
     }
@@ -40,18 +53,41 @@ public class MandelbrotApp {
     private static void createAndShowGui() {
         Theme.install("dark".equalsIgnoreCase(System.getProperty(THEME_PROPERTY)) ? Theme.Mode.DARK : Theme.Mode.LIGHT);
 
+        // Pick up where the last run left off (view, palette, fractal, supersample, window, export choices).
+        SessionStore sessionStore = new SessionStore(SessionStore.defaultDirectory());
+        Optional<SessionState> remembered = sessionStore.load();
+
         FractalPanel fractalPanel = new FractalPanel(1000, 700);
+        if (remembered.isPresent()) {
+            try {
+                fractalPanel.restoreSession(remembered.get().view(), remembered.get().supersample());
+            } catch (RuntimeException ex) {
+                System.err.println("Could not restore the previous session: " + ex.getMessage());
+                remembered = Optional.empty();
+            }
+        }
         RenderSettings initialSettings = fractalPanel.getRenderSettings();
 
         JFrame frame = new JFrame("Mandelbrot / Julia — " + fractalPanel.getWorkerThreadCount() + " render threads");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 
+        AtomicReference<SessionState.ExportData> exportChoices =
+                new AtomicReference<>(remembered.map(SessionState::export).orElse(null));
+        Rectangle[] normalBounds = { null };
+        SessionRecorder recorder = new SessionRecorder(sessionStore, () -> new SessionState(SessionState.CURRENT_VERSION,
+                MandelbrotConfig.capture(fractalPanel.getCurrentViewport(), fractalPanel.getPalette(),
+                        fractalPanel.getRenderSettings()),
+                fractalPanel.getRenderSettings().supersampleFactor(),
+                windowData(frame, normalBounds[0]), exportChoices.get()));
+
         TopBar topBar = new TopBar(initialSettings.algorithm(), initialSettings.supersampleFactor());
         StatusBar statusBar = new StatusBar();
         topBar.palette.setExtraIcon(new PaletteSwatchIcon(fractalPanel::getPalette));
 
-        topBar.supersample.setChangeListener(factor ->
-                fractalPanel.setRenderSettings(fractalPanel.getRenderSettings().withSupersampleFactor(factor)));
+        topBar.supersample.setChangeListener(factor -> {
+            fractalPanel.setRenderSettings(fractalPanel.getRenderSettings().withSupersampleFactor(factor));
+            recorder.markDirty();
+        });
 
         // Julia constant: the Mandelbrot position the view was centred on, plus the famous presets.
         MandelbrotPosition mandelbrotPosition = new MandelbrotPosition(fractalPanel.getCurrentViewport().center());
@@ -121,12 +157,17 @@ public class MandelbrotApp {
             topBar.palette.repaint();
         };
 
+        if (remembered.isPresent()) {
+            syncFractalControls.run();
+        }
+
         topBar.palette.addActionListener(_ -> {
             JDialog paletteDialog = new JDialog(frame, "Edit Palette", false);
             paletteDialog.setResizable(false);
             PaletteEditorPanel editor = new PaletteEditorPanel(fractalPanel.getPalette(), (palette, done) -> {
                 fractalPanel.setPalette(palette, done);
                 topBar.palette.repaint();
+                recorder.markDirty();
             }, () -> paletteDialog.setVisible(false));
             paletteDialog.getContentPane().add(editor);
             paletteDialog.pack();
@@ -139,7 +180,10 @@ public class MandelbrotApp {
             exportDialog.setResizable(false);
             ExportPanel exportPanel = new ExportPanel(fractalPanel.getWidth(), fractalPanel.getHeight(),
                     fractalPanel.getCurrentViewport(), fractalPanel.getRenderSettings(), fractalPanel.getPalette(),
-                    () -> exportDialog.setVisible(false));
+                    exportChoices.get(), choices -> {
+                        exportChoices.set(choices);
+                        recorder.markDirty();
+                    }, () -> exportDialog.setVisible(false));
             exportDialog.getContentPane().add(exportPanel);
             exportDialog.pack();
             exportDialog.setLocationRelativeTo(frame);
@@ -171,7 +215,11 @@ public class MandelbrotApp {
             }
         };
 
-        fractalPanel.setViewportListener(_ -> SwingUtilities.invokeLater(refreshStatus));
+        // Only viewport changes mark the session dirty: cursor movement and render progress fire far too often.
+        fractalPanel.setViewportListener(_ -> SwingUtilities.invokeLater(() -> {
+            refreshStatus.run();
+            recorder.markDirty();
+        }));
         fractalPanel.setRenderStatusListener(status -> SwingUtilities.invokeLater(() -> {
             latestStatus.set(status);
             refreshStatus.run();
@@ -186,12 +234,74 @@ public class MandelbrotApp {
         frame.getContentPane().add(statusBar, BorderLayout.SOUTH);
 
         frame.pack();
-        frame.setMinimumSize(new Dimension(900, 560));
-        frame.setLocationRelativeTo(null);
+        frame.setMinimumSize(new Dimension(MIN_WIDTH, MIN_HEIGHT));
+        if (!restoreWindow(frame, remembered.map(SessionState::window).orElse(null))) {
+            frame.setLocationRelativeTo(null);
+        }
+        normalBounds[0] = frame.getBounds();
+        frame.addComponentListener(new ComponentAdapter() {
+            @Override
+            public void componentMoved(ComponentEvent e) {
+                windowChanged();
+            }
+
+            @Override
+            public void componentResized(ComponentEvent e) {
+                windowChanged();
+            }
+
+            private void windowChanged() {
+                if ((frame.getExtendedState() & JFrame.MAXIMIZED_BOTH) != JFrame.MAXIMIZED_BOTH) {
+                    normalBounds[0] = frame.getBounds();
+                }
+                recorder.markDirty();
+            }
+        });
+        frame.addWindowStateListener(_ -> recorder.markDirty());
+        frame.addWindowListener(new WindowAdapter() {
+            @Override
+            public void windowClosing(WindowEvent e) {
+                recorder.flush();
+            }
+        });
         frame.setVisible(true);
         SwingUtilities.invokeLater(fractalPanel::requestFocusInWindow);
 
         refreshStatus.run();
+    }
+
+    private static SessionState.WindowData windowData(JFrame frame, Rectangle normalBounds) {
+        Rectangle bounds = normalBounds != null ? normalBounds : frame.getBounds();
+        boolean maximized = (frame.getExtendedState() & JFrame.MAXIMIZED_BOTH) == JFrame.MAXIMIZED_BOTH;
+        return new SessionState.WindowData(bounds.x, bounds.y, bounds.width, bounds.height, maximized);
+    }
+
+    /** Puts the window back where it was, unless that spot is no longer on any screen (monitor unplugged). */
+    private static boolean restoreWindow(JFrame frame, SessionState.WindowData saved) {
+        if (saved == null) {
+            return false;
+        }
+        Rectangle bounds = new Rectangle(saved.x(), saved.y(), Math.max(saved.width(), MIN_WIDTH),
+                Math.max(saved.height(), MIN_HEIGHT));
+        if (!isOnScreen(bounds)) {
+            return false;
+        }
+        frame.setBounds(bounds);
+        if (saved.maximized()) {
+            frame.setExtendedState(JFrame.MAXIMIZED_BOTH);
+        }
+        return true;
+    }
+
+    /** True if a reasonable part of {@code bounds} (including its title bar) is visible on some screen. */
+    private static boolean isOnScreen(Rectangle bounds) {
+        for (GraphicsDevice device : GraphicsEnvironment.getLocalGraphicsEnvironment().getScreenDevices()) {
+            Rectangle visible = device.getDefaultConfiguration().getBounds().intersection(bounds);
+            if (visible.width >= 160 && visible.height >= 80) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** The Julia c dropdown's top entry: the Mandelbrot coordinate the view was centred on when Julia was last selected. */

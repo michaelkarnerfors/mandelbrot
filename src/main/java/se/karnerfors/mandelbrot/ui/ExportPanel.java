@@ -14,6 +14,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 
 import javax.swing.ButtonGroup;
 import javax.swing.JButton;
@@ -31,6 +32,7 @@ import javax.swing.filechooser.FileNameExtensionFilter;
 
 import se.karnerfors.mandelbrot.io.MandelbrotConfig;
 import se.karnerfors.mandelbrot.io.MandelbrotConfigIO;
+import se.karnerfors.mandelbrot.io.SessionState.ExportData;
 import se.karnerfors.mandelbrot.math.Complex;
 import se.karnerfors.mandelbrot.math.Viewport;
 import se.karnerfors.mandelbrot.palette.Palette;
@@ -74,6 +76,7 @@ public final class ExportPanel extends JPanel {
     private final RenderSettings baseSettings;
     private final Palette palette;
     private final Runnable onClose;
+    private final Consumer<ExportData> onChoicesUsed;
 
     private final JComboBox<Resolution> resolutionCombo = new JComboBox<>();
     private final JRadioButton[] supersampleRadios = new JRadioButton[SUPERSAMPLE_FACTORS.length];
@@ -90,11 +93,16 @@ public final class ExportPanel extends JPanel {
     private volatile boolean cancelRequested = false;
     private volatile boolean rendering = false;
 
+    /**
+     * @param saved         the resolution, supersample factor and output file used last time, or null the first time
+     * @param onChoicesUsed told what was chosen each time a render is started, so the app can remember it
+     */
     public ExportPanel(int currentWidth, int currentHeight, Viewport currentViewport, RenderSettings currentSettings,
-            Palette palette, Runnable onClose) {
+            Palette palette, ExportData saved, Consumer<ExportData> onChoicesUsed, Runnable onClose) {
         this.baseSettings = currentSettings;
         this.palette = palette;
         this.onClose = onClose;
+        this.onChoicesUsed = onChoicesUsed;
 
         setLayout(new BorderLayout(0, 8));
         setBorder(new EmptyBorder(8, 8, 8, 8));
@@ -105,9 +113,19 @@ public final class ExportPanel extends JPanel {
             resolutionCombo.addItem(resolution);
         }
 
+        if (saved != null) {
+            for (int i = 0; i < resolutionCombo.getItemCount(); i++) {
+                Resolution candidate = resolutionCombo.getItemAt(i);
+                if (candidate.width() == saved.width() && candidate.height() == saved.height()) {
+                    resolutionCombo.setSelectedIndex(i);
+                    break;
+                }
+            }
+        }
+
         JPanel supersamplePanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
         ButtonGroup supersampleGroup = new ButtonGroup();
-        int currentFactor = currentSettings.supersampleFactor();
+        int currentFactor = saved != null ? saved.supersample() : currentSettings.supersampleFactor();
         for (int i = 0; i < SUPERSAMPLE_FACTORS.length; i++) {
             int factor = SUPERSAMPLE_FACTORS[i];
             JRadioButton radio = new JRadioButton(factor + "x", factor == currentFactor);
@@ -122,6 +140,9 @@ public final class ExportPanel extends JPanel {
         zoomField.setText(Double.toString(currentViewport.zoom()));
 
         fileField.setEditable(false);
+        if (saved != null && saved.outputFile() != null && !saved.outputFile().isBlank()) {
+            fileField.setText(saved.outputFile());
+        }
         browseButton.addActionListener(_ -> chooseFile());
         JPanel filePanel = new JPanel(new BorderLayout(4, 0));
         filePanel.add(fileField, BorderLayout.CENTER);
@@ -165,7 +186,13 @@ public final class ExportPanel extends JPanel {
     private void chooseFile() {
         JFileChooser chooser = new JFileChooser();
         chooser.setFileFilter(new FileNameExtensionFilter("PNG image", "png"));
-        chooser.setSelectedFile(new File("mandelbrot.png"));
+        String remembered = fileField.getText().trim();
+        if (remembered.isEmpty()) {
+            chooser.setSelectedFile(new File("mandelbrot.png"));
+        } else {
+            // Open in the folder used last time, with that file name suggested.
+            chooser.setSelectedFile(new File(remembered));
+        }
         if (chooser.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
             fileField.setText(withPngExtension(chooser.getSelectedFile()).getAbsolutePath());
         }
@@ -193,6 +220,12 @@ public final class ExportPanel extends JPanel {
             return;
         }
         File outputFile = withPngExtension(new File(path));
+        if (outputFile.exists() && JOptionPane.showConfirmDialog(this,
+                outputFile.getName() + " already exists. Replace it?", "Replace file?",
+                JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE) != JOptionPane.YES_OPTION) {
+            return;
+        }
+        onChoicesUsed.accept(new ExportData(resolution.width(), resolution.height(), factor, outputFile.getAbsolutePath()));
 
         Viewport target = new Viewport(Complex.fromCartesian(re, im), zoom, resolution.width(), resolution.height());
         RenderSettings settings = baseSettings.withSupersampleFactor(factor);
