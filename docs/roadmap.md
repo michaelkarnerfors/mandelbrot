@@ -1,9 +1,9 @@
 # Mandelbrot / Julia Explorer: Roadmap
 
-Last updated 2026-10-08, after slice 7b and the follow-up fixes. Detail on open problems lives in the repo's `docs/known-issues.md`; the design intent is in `docs/ux-brief.md`.
+Last updated 2026-10-08, after the Diligence phase (cleanup, README and user guide, command-line renderer). Detail on open problems lives in the repo's `docs/known-issues.md`; the design intent is in `docs/ux-brief.md`.
 
 ## How we work
-Michael owns the product and the code. Claude acts as UX/UI designer and implementer: one slice at a time, each on its own git branch with a reviewable diff, stacked (each branch starts from the last commit). Michael tests in Eclipse, then asks for the commit message and commit. Claude only type-checks and drives the UI headlessly (stub FlatLaf, xvfb, Robot); the real build (`mvn clean install`) is Michael's. Main has been fast-forwarded to the end of the stack.
+Michael owns the product and the code. Claude acts as UX/UI designer and implementer: one slice at a time, each on its own git branch with a reviewable diff, stacked (each branch starts from the last commit). Michael tests in Eclipse, then asks for the commit message and commit. Claude only type-checks and drives the UI headlessly (stub FlatLaf, xvfb, Robot); the real build (`mvn clean install`) is Michael's. Main is at the end of the stack.
 
 ## What exists (package `se.karnerfors.mandelbrot`, Java 25, Maven, Jackson, FlatLaf)
 
@@ -18,6 +18,8 @@ Michael owns the product and the code. Claude acts as UX/UI designer and impleme
 | 7a Julia presets | c chip with preset popover (thumbnails, rename, delete, reorder, save current c), `julia-presets.json` | 185d6cb |
 | 7b Julia split explorer | Mandelbrot pane beside the Julia pane; press/drag sets c and locks, double-click unlocks and c follows the pointer; Julia redraws at 1x while dragging and refines on release | 8495ee8 |
 | Follow-ups | Palette identity remembered across runs, palette menu survives delete, default canvas 1100 x 700 | 310215c |
+| Diligence cleanup | "Sync to current view" in the Render dialog, confirm before deleting a preset, status-bar hint follows the pane, README split into a front page and `docs/user-guide.md` | de0cbb0 |
+| Command-line renderer | `MandelbrotCli` renders from a bookmark, view file or app PNG, with overrides, `--silent` and exit codes for batch use | cf1087c |
 
 Per-user files live in `~/mandelbrot/` (override with `-Dmandelbrot.home`): `state.json`, `palettes.json`, `bookmarks.json`, `julia-presets.json`, `renders/`. All follow the same pattern: tolerant load, atomic write, `MandelbrotConfig` as the shared representation of "a place".
 
