@@ -42,7 +42,7 @@ public final class TopBar extends JPanel {
     public final AppButton back = AppButton.iconButton(Icons.Glyph.BACK, "Back", AppButton.Style.GHOST, false);
     public final SegmentedControl<RenderAlgorithm> fractal;
     public final JComboBox<Object> juliaC = new JComboBox<>();
-    public final AppButton palette = new AppButton("Palette…", null, AppButton.Style.OUTLINE, false);
+    public final AppButton palette = new AppButton("Classic", null, AppButton.Style.OUTLINE, false);
     public final SegmentedControl<Integer> supersample;
     public final AppButton save = new AppButton("Save…", null, AppButton.Style.OUTLINE, false);
     public final AppButton load = new AppButton("Load…", null, AppButton.Style.OUTLINE, false);
@@ -73,7 +73,7 @@ public final class TopBar extends JPanel {
         memoryNoteGap.setVisible(false);
         juliaC.setToolTipText("Julia constant c");
         back.setEnabled(false);
-        palette.setToolTipText("Edit the palette");
+        palette.setToolTipText("Palettes");
         labelled.add(palette);
         labelled.add(render);
         applyJuliaComboWidth();

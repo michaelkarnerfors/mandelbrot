@@ -32,7 +32,7 @@ public class AppButton extends JButton {
     private final boolean small;
     private Icons.Glyph glyph;
     private Icon extraIcon;
-    private final String fullText;
+    private String fullText;
     private boolean textHidden;
     private boolean ready;
 
@@ -87,6 +87,23 @@ public class AppButton extends JButton {
     /** An additional icon drawn before the label (for example the palette swatch). It paints its own colours. */
     public void setExtraIcon(Icon icon) {
         this.extraIcon = icon;
+        revalidate();
+        repaint();
+    }
+
+    /** Changes the label; in compact mode it is kept as the tooltip and the button stays icon-only. */
+    public void setLabel(String text) {
+        String value = text == null ? "" : text;
+        if (value.equals(fullText)) {
+            return;
+        }
+        fullText = value;
+        getAccessibleContext().setAccessibleName(value);
+        if (textHidden) {
+            setToolTipText(value);
+        } else {
+            setText(value);
+        }
         revalidate();
         repaint();
     }

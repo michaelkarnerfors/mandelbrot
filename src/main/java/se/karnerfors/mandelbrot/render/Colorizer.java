@@ -39,6 +39,29 @@ public final class Colorizer {
     }
 
     /**
+     * A quick recolour for live palette editing: one sample per final pixel (the centre cell of each
+     * {@code factor} x {@code factor} block) instead of averaging them all. The result has the final
+     * image size and is exact when {@code factor} is 1.
+     */
+    public static BufferedImage colorizeSampled(IterationGrid grid, Palette palette, int factor) {
+        int f = Math.max(1, factor);
+        int outWidth = grid.width() / f;
+        int outHeight = grid.height() / f;
+        BufferedImage image = new BufferedImage(outWidth, outHeight, BufferedImage.TYPE_INT_ARGB);
+        for (int ox = 0; ox < outWidth; ox++) {
+            for (int oy = 0; oy < outHeight; oy++) {
+                int x = ox * f + f / 2;
+                int y = oy * f + f / 2;
+                Color color = grid.isEscaped(x, y)
+                        ? palette.colorFor(grid.smoothIterationCountAt(x, y), grid.nuAt(x, y))
+                        : Color.BLACK;
+                image.setRGB(ox, oy, color.getRGB());
+            }
+        }
+        return image;
+    }
+
+    /**
      * Box-filters {@code source} down by {@code factor} in each axis --
      * source.width/height must be exact multiples of factor (true whenever
      * source came from Viewport.supersampled(factor)). Averages in the same

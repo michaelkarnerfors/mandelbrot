@@ -23,7 +23,7 @@ import javax.swing.UIManager;
 public final class Icons {
 
     public enum Glyph {
-        HOME, BACK, RENDER, CHEVRON_DOWN, TARGET, SUN, MOON, CHECK
+        HOME, BACK, RENDER, CHEVRON_DOWN, CHEVRON_UP, TARGET, SUN, MOON, CHECK, PLUS, MINUS, CLOSE, EDIT, TRASH
     }
 
     private Icons() {
@@ -99,6 +99,19 @@ public final class Icons {
                         new Line2D.Double(4, 20, 20, 20) };
             case CHEVRON_DOWN:
                 return new Shape[] { poly(false, 6, 9, 12, 15, 18, 9) };
+            case CHEVRON_UP:
+                return new Shape[] { poly(false, 6, 15, 12, 9, 18, 15) };
+            case PLUS:
+                return new Shape[] { new Line2D.Double(12, 5, 12, 19), new Line2D.Double(5, 12, 19, 12) };
+            case MINUS:
+                return new Shape[] { new Line2D.Double(5, 12, 19, 12) };
+            case CLOSE:
+                return new Shape[] { new Line2D.Double(6, 6, 18, 18), new Line2D.Double(18, 6, 6, 18) };
+            case EDIT:
+                return new Shape[] { poly(true, 4, 20, 8, 19, 19, 8, 16, 5, 5, 16) };
+            case TRASH:
+                return new Shape[] { new Line2D.Double(5, 7, 19, 7), poly(false, 10, 7, 10, 4, 14, 4, 14, 7),
+                        poly(false, 7, 7, 8, 20, 16, 20, 17, 7) };
             case CHECK:
                 return new Shape[] { poly(false, 5, 12, 10, 17, 19, 7) };
             case TARGET:

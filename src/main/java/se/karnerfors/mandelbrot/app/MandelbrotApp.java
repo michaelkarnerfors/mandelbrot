@@ -2,6 +2,7 @@ package se.karnerfors.mandelbrot.app;
 
 import java.awt.BorderLayout;
 import java.awt.Dimension;
+import java.awt.Point;
 import java.awt.GraphicsDevice;
 import java.awt.GraphicsEnvironment;
 import java.awt.Rectangle;
@@ -23,6 +24,7 @@ import javax.swing.filechooser.FileNameExtensionFilter;
 
 import se.karnerfors.mandelbrot.io.MandelbrotConfig;
 import se.karnerfors.mandelbrot.io.MandelbrotConfigIO;
+import se.karnerfors.mandelbrot.io.PaletteLibrary;
 import se.karnerfors.mandelbrot.io.SessionState;
 import se.karnerfors.mandelbrot.io.SessionStore;
 import se.karnerfors.mandelbrot.math.Complex;
@@ -32,7 +34,9 @@ import se.karnerfors.mandelbrot.render.RenderAlgorithm;
 import se.karnerfors.mandelbrot.render.RenderSettings;
 import se.karnerfors.mandelbrot.ui.ExportPanel;
 import se.karnerfors.mandelbrot.ui.FractalPanel;
+import se.karnerfors.mandelbrot.palette.Palette;
 import se.karnerfors.mandelbrot.ui.PaletteEditorPanel;
+import se.karnerfors.mandelbrot.ui.PaletteMenu;
 import se.karnerfors.mandelbrot.ui.PaletteSwatchIcon;
 import se.karnerfors.mandelbrot.ui.RenderStatus;
 import se.karnerfors.mandelbrot.ui.StatusBar;
@@ -84,6 +88,17 @@ public class MandelbrotApp {
         TopBar topBar = new TopBar(initialSettings.algorithm(), initialSettings.supersampleFactor());
         StatusBar statusBar = new StatusBar();
         topBar.palette.setExtraIcon(new PaletteSwatchIcon(fractalPanel::getPalette));
+
+        // The palette button is labelled with the name of the active palette, or "Custom" when it is not in the library.
+        PaletteLibrary paletteLibrary = new PaletteLibrary(SessionStore.defaultDirectory());
+        // Several entries can hold identical colours (a copy saved without edits): remember which one was picked.
+        String[] pickedName = { null };
+        Runnable updatePaletteLabel = () -> {
+            topBar.palette.setLabel(paletteLibrary.nameOf(fractalPanel.getPalette(), pickedName[0])
+                    .map(MandelbrotApp::shortLabel).orElse("Custom"));
+            topBar.palette.repaint();
+        };
+        updatePaletteLabel.run();
 
         // Warn next to the settle control when the chosen quality would take a large share of the Java heap.
         Runnable updateMemoryNote = () -> {
@@ -163,26 +178,132 @@ public class MandelbrotApp {
                 updatingPresets[0] = false;
             }
             topBar.juliaC.repaint();
-            topBar.palette.repaint();
+            updatePaletteLabel.run();
         };
 
         if (remembered.isPresent()) {
             syncFractalControls.run();
         }
 
-        topBar.palette.addActionListener(_ -> {
-            JDialog paletteDialog = new JDialog(frame, "Edit Palette", false);
-            paletteDialog.setResizable(false);
-            PaletteEditorPanel editor = new PaletteEditorPanel(fractalPanel.getPalette(), (palette, done) -> {
-                fractalPanel.setPalette(palette, done);
-                topBar.palette.repaint();
+        // Palette menu and the non-modal editor.
+        JDialog[] editorDialog = { null };
+        PaletteEditorPanel[] editorPanel = { null };
+        PaletteMenu.Host[] menuHost = { null };
+
+        Runnable closeEditor = () -> {
+            JDialog dialog = editorDialog[0];
+            if (dialog == null) {
+                return;
+            }
+            editorDialog[0] = null;
+            if (editorPanel[0].isDirty()) {
+                fractalPanel.setPalette(editorPanel[0].baseline(), null); // unapplied edits are discarded
+            }
+            dialog.dispose();
+            updatePaletteLabel.run();
+        };
+
+        Runnable openEditor = () -> {
+            if (editorDialog[0] != null) {
+                editorDialog[0].toFront();
+                return;
+            }
+            JDialog dialog = new JDialog(frame, "Edit palette", false);
+            // When one of your own palettes is active, the editor starts with its name so Overwrite is one click away.
+            String startName = paletteLibrary.nameOf(fractalPanel.getPalette(), pickedName[0])
+                    .filter(n -> paletteLibrary.statusOf(n) == PaletteLibrary.NameStatus.EXISTING).orElse(null);
+            PaletteEditorPanel panel = new PaletteEditorPanel(fractalPanel.getPalette(), startName, new PaletteEditorPanel.Host() {
+                @Override
+                public void preview(Palette palette) {
+                    fractalPanel.setPaletteLive(palette);
+                    updatePaletteLabel.run();
+                }
+
+                @Override
+                public void apply(Palette palette) {
+                    fractalPanel.setPalette(palette, null);
+                    recorder.markDirty();
+                    updatePaletteLabel.run();
+                }
+
+                @Override
+                public void revert(Palette palette) {
+                    fractalPanel.setPalette(palette, null);
+                    topBar.palette.repaint();
+                }
+
+                @Override
+                public PaletteLibrary.NameStatus nameStatus(String name) {
+                    return paletteLibrary.statusOf(name);
+                }
+
+                @Override
+                public Optional<String> saveAs(String name, Palette palette) {
+                    try {
+                        String stored = paletteLibrary.save(name, palette);
+                        pickedName[0] = stored;
+                        fractalPanel.setPalette(palette, null);
+                        recorder.markDirty();
+                        updatePaletteLabel.run();
+                        return Optional.of(stored);
+                    } catch (IOException ex) {
+                        javax.swing.JOptionPane.showMessageDialog(dialog,
+                                "Could not save " + paletteLibrary.file() + ":\n" + ex.getMessage(), "Save failed",
+                                javax.swing.JOptionPane.ERROR_MESSAGE);
+                        return Optional.empty();
+                    }
+                }
+            });
+            editorDialog[0] = dialog;
+            editorPanel[0] = panel;
+            dialog.setDefaultCloseOperation(JDialog.DO_NOTHING_ON_CLOSE);
+            dialog.addWindowListener(new WindowAdapter() {
+                @Override
+                public void windowClosing(WindowEvent e) {
+                    closeEditor.run();
+                }
+            });
+            dialog.getRootPane().registerKeyboardAction(_ -> closeEditor.run(),
+                    javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_ESCAPE, 0),
+                    javax.swing.JComponent.WHEN_IN_FOCUSED_WINDOW);
+            dialog.getContentPane().add(panel);
+            dialog.pack();
+            Point origin = fractalPanel.isShowing() ? fractalPanel.getLocationOnScreen() : frame.getLocation();
+            dialog.setLocation(origin.x + fractalPanel.getWidth() - dialog.getWidth() - 16, origin.y + 12);
+            dialog.setVisible(true);
+        };
+
+        menuHost[0] = new PaletteMenu.Host() {
+            @Override
+            public Palette current() {
+                return fractalPanel.getPalette();
+            }
+
+            @Override
+            public Optional<String> activeName() {
+                return paletteLibrary.nameOf(fractalPanel.getPalette(), pickedName[0]);
+            }
+
+            @Override
+            public void choose(String name, Palette palette) {
+                pickedName[0] = name;
+                closeEditor.run();
+                fractalPanel.setPalette(palette, null);
                 recorder.markDirty();
-            }, () -> paletteDialog.setVisible(false));
-            paletteDialog.getContentPane().add(editor);
-            paletteDialog.pack();
-            paletteDialog.setLocationRelativeTo(frame);
-            paletteDialog.setVisible(true);
-        });
+                updatePaletteLabel.run();
+            }
+
+            @Override
+            public void editCurrent() {
+                openEditor.run();
+            }
+
+            @Override
+            public void libraryChanged() {
+                updatePaletteLabel.run();
+            }
+        };
+        topBar.palette.addActionListener(_ -> PaletteMenu.show(topBar.palette, paletteLibrary, menuHost[0]));
 
         topBar.render.addActionListener(_ -> {
             JDialog exportDialog = new JDialog(frame, "Render to File", true);
@@ -273,6 +394,11 @@ public class MandelbrotApp {
         SwingUtilities.invokeLater(fractalPanel::requestFocusInWindow);
 
         refreshStatus.run();
+    }
+
+    /** Keeps the palette button from growing with long names. */
+    private static String shortLabel(String name) {
+        return name.length() > 12 ? name.substring(0, 11) + "…" : name;
     }
 
     private static SessionState.WindowData windowData(JFrame frame, Rectangle normalBounds) {

@@ -86,6 +86,11 @@ public final class FractalPanel extends JPanel {
     private int lastSupersampleFactor = 1;
     private long lastSettledMillis = -1;
 
+    /** Bumped on every palette change so a slow recolour that finishes late cannot overwrite a newer one. */
+    private long paletteSeq;
+    private boolean liveRecolourRunning;
+    private boolean liveRecolourWanted;
+
     /** A 1x preview is on screen and the refinement at the settle factor has not been able to start yet. */
     private boolean pendingRefine;
 
@@ -298,6 +303,8 @@ public final class FractalPanel extends JPanel {
      */
     public void setPalette(Palette newPalette, Runnable onComplete) {
         this.palette = newPalette;
+        this.liveRecolourWanted = false;
+        final long mySeq = ++paletteSeq;
         if (lastGrid == null) {
             if (onComplete != null) {
                 onComplete.run();
@@ -318,7 +325,7 @@ public final class FractalPanel extends JPanel {
 
             @Override
             protected void done() {
-                if (myGeneration == renderGeneration) {
+                if (myGeneration == renderGeneration && mySeq == paletteSeq) {
                     try {
                         renderedImage = get();
                         repaint();
@@ -332,6 +339,54 @@ public final class FractalPanel extends JPanel {
             }
         };
         worker.execute();
+    }
+
+    /**
+     * Shows {@code newPalette} right away while it is being edited: the drawn view is recoloured from the
+     * cached iteration data with one sample per pixel (quick, but without the supersampling average).
+     * New renders already use this palette. Follow up with {@link #setPalette(Palette, Runnable)} to get
+     * full quality, or with it again using the old palette to revert.
+     */
+    public void setPaletteLive(Palette newPalette) {
+        this.palette = newPalette;
+        this.liveRecolourWanted = true;
+        paletteSeq++;
+        startLiveRecolour();
+    }
+
+    private void startLiveRecolour() {
+        if (liveRecolourRunning || !liveRecolourWanted || lastGrid == null) {
+            return;
+        }
+        liveRecolourRunning = true;
+        final IterationGrid grid = lastGrid;
+        final int factor = lastSupersampleFactor;
+        final Palette live = palette;
+        final long generation = renderGeneration;
+        final long seq = paletteSeq;
+        new SwingWorker<BufferedImage, Void>() {
+            @Override
+            protected BufferedImage doInBackground() {
+                return Colorizer.colorizeSampled(grid, live, factor);
+            }
+
+            @Override
+            protected void done() {
+                liveRecolourRunning = false;
+                if (generation == renderGeneration && seq == paletteSeq) {
+                    try {
+                        renderedImage = get();
+                        liveRecolourWanted = false;
+                        repaint();
+                    } catch (Exception ex) {
+                        ex.printStackTrace();
+                    }
+                }
+                if (seq != paletteSeq) {
+                    startLiveRecolour(); // an edit arrived meanwhile: go again with the newest palette
+                }
+            }
+        }.execute();
     }
 
     /** Centres the view on {@code point}, keeping the zoom; Back returns to the previous view. */
