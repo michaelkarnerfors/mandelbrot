@@ -313,12 +313,22 @@ public final class JuliaPresetPopover {
         }
 
         void delete(Entry entry) {
-            try {
-                store.delete(entry.id());
-            } catch (IOException ex) {
-                error("Could not delete: " + ex.getMessage(), "Delete failed");
+            // A modal dialog would dismiss the popup anyway, so close it, ask, and bring it back.
+            popup.setVisible(false);
+            boolean confirmed = JOptionPane.showConfirmDialog(SwingUtilities.getWindowAncestor(invoker),
+                    "Delete the Julia preset \"" + entry.name() + "\"?", "Delete preset",
+                    JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE) == JOptionPane.YES_OPTION;
+            if (confirmed) {
+                try {
+                    store.delete(entry.id());
+                } catch (IOException ex) {
+                    JOptionPane.showMessageDialog(SwingUtilities.getWindowAncestor(invoker),
+                            "Could not delete: " + ex.getMessage(), "Delete failed", JOptionPane.ERROR_MESSAGE);
+                }
             }
-            rebuild(null);
+            if (invoker.isShowing()) {
+                JuliaPresetPopover.show(invoker, store, host, onClose);
+            }
         }
 
         void move(Entry entry, int newIndex) {

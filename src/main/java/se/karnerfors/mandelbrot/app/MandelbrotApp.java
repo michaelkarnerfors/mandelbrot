@@ -381,8 +381,18 @@ public class MandelbrotApp {
             latestStatus.set(status);
             refreshStatus.run();
         }));
+        // The hint in the status bar follows the pane under the pointer: the Mandelbrot picker is used differently.
+        boolean[] overPicker = { false };
+        Runnable refreshHint = () -> statusBar.setHint(
+                overPicker[0] && splitRef[0] != null && splitRef[0].isActive()
+                        ? "Press or drag: set c · Double-click: unlock · Right-drag: pan · Wheel: zoom"
+                        : "Left-drag: zoom · Right-drag: pan · Wheel: zoom");
         fractalPanel.setCursorMoveListener(point -> SwingUtilities.invokeLater(() -> {
             hoverPoint.set(point);
+            if (point != null) {
+                overPicker[0] = false;
+                refreshHint.run();
+            }
             refreshStatus.run();
         }));
 
@@ -404,6 +414,8 @@ public class MandelbrotApp {
             public void pickerCursor(Complex point) {
                 SwingUtilities.invokeLater(() -> {
                     hoverPoint.set(point);
+                    overPicker[0] = point != null;
+                    refreshHint.run();
                     refreshStatus.run();
                 });
             }
@@ -411,6 +423,8 @@ public class MandelbrotApp {
             @Override
             public void activeChanged(boolean active) {
                 topBar.setSplitActive(active);
+                overPicker[0] = false;
+                refreshHint.run();
             }
 
             @Override

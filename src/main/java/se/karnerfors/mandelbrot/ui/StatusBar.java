@@ -89,6 +89,11 @@ public final class StatusBar extends JPanel {
         }
     }
 
+    /** Sets the interaction hint at the left of the bar. */
+    public void setHint(String text) {
+        hint.setText(text);
+    }
+
     public void setZoom(double zoom) {
         zoomValue.setText(String.format(Locale.ROOT, "%.3e", zoom));
     }

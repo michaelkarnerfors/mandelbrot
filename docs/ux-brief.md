@@ -46,7 +46,7 @@ Five groups, left to right in a single slim top bar, plus a status bar:
 | Group | Contents |
 |---|---|
 | **View** | Home, Back |
-| **Fractal** | Mandelbrot / Julia switch; Julia c indicator and "Julia from here" |
+| **Fractal** | Mandelbrot / Julia switch; Julia c indicator |
 | **Look** | Palette selector (gradient swatch + name) with Edit… |
 | **Quality** | "Settle at" 1x / 2x / 4x / 9x (segmented control) |
 | **Library & Output** | Bookmarks (★ popover), Add to render queue |
@@ -121,7 +121,7 @@ Each bookmark has: name, thumbnail, fractal type, Julia c (if Julia), centre, zo
 Current flow: pick "Julia", then choose c from a dropdown of the Mandelbrot centre plus five hard-coded presets (Douady rabbit, Siegel disk, San Marco, Dendrite, Seahorse).
 
 New flow:
-- **Julia from here**: one action (button or context action) that switches to Julia using the current Mandelbrot centre as c.
+- **Switching to Julia** uses the current Mandelbrot centre as c.
 - **Split view** ("New Julia"): Mandelbrot on the left, a live Julia on the right. As the cursor moves over the Mandelbrot pane the Julia pane previews that c (at preview quality). A **click without dragging locks c.** Drags still zoom, so no conflict. Note that today a left click means "centre here"; in split mode a click means "lock c", so the pane header must make the mode explicit.
 - Once locked, the Julia pane is fully navigable. A lock icon in its header releases it to follow the cursor again.
 - Split pane can be **popped out** into its own window and re-docked.

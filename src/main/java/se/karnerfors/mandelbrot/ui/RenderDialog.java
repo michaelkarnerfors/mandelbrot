@@ -45,7 +45,7 @@ import se.karnerfors.mandelbrot.ui.Theme.Token;
  * settings are taken when it opens.
  *
  * <p>The picture frames the same area as the window does, drawn on a bigger canvas. Re, Im and Zoom are in the
- * window's own terms (the zoom shown in the status bar), so "Reset to current view" and a hand-typed place
+ * window's own terms (the zoom shown in the status bar), so "Sync to current view" and a hand-typed place
  * mean the same thing as everywhere else in the app.
  */
 public final class RenderDialog {
@@ -164,6 +164,8 @@ public final class RenderDialog {
         private final AppButton addButton = new AppButton("Add to queue", Icons.Glyph.PLUS, AppButton.Style.PRIMARY, false);
         private boolean nameEdited;
         private boolean updating;
+        private AppButton syncButton;
+        private javax.swing.Timer syncPoll;
 
         Form(java.awt.Window owner, Host host, java.util.function.Consumer<Request> onAdd) {
             this.host = host;
@@ -224,6 +226,54 @@ public final class RenderDialog {
             wire();
             suggestName();
             refreshEstimate();
+
+            // "Sync to current view" is only live when the window has moved on or the place was typed over.
+            DocumentListener locationEdits = new DocumentListener() {
+                @Override
+                public void insertUpdate(DocumentEvent e) {
+                    refreshSync();
+                }
+
+                @Override
+                public void removeUpdate(DocumentEvent e) {
+                    refreshSync();
+                }
+
+                @Override
+                public void changedUpdate(DocumentEvent e) {
+                    refreshSync();
+                }
+            };
+            for (JTextField f : new JTextField[] { reField, imField, zoomField }) {
+                f.getDocument().addDocumentListener(locationEdits);
+            }
+            syncPoll = new javax.swing.Timer(400, _ -> refreshSync());
+            syncPoll.start();
+            dialog.addWindowListener(new java.awt.event.WindowAdapter() {
+                @Override
+                public void windowClosed(java.awt.event.WindowEvent e) {
+                    syncPoll.stop();
+                }
+            });
+        }
+
+        /** True when the location fields or the main window differ from what this dialog last took. */
+        private boolean isDirty() {
+            MandelbrotConfig.ViewportData v = view.viewport();
+            if (!reField.getText().trim().equals(Double.toString(v.real()))
+                    || !imField.getText().trim().equals(Double.toString(v.imaginary()))
+                    || !zoomField.getText().trim().equals(Double.toString(v.zoom()))) {
+                return true;
+            }
+            Dimension size = host.windowSize();
+            return !host.view().equals(view) || size.width != windowW || size.height != windowH
+                    || !host.paletteLabel().equals(paletteLabel);
+        }
+
+        private void refreshSync() {
+            if (!updating && syncButton != null) {
+                syncButton.setEnabled(isDirty());
+            }
         }
 
         // --- sections -------------------------------------------------------------------------------
@@ -313,10 +363,11 @@ public final class RenderDialog {
             head.setAlignmentX(Component.LEFT_ALIGNMENT);
             head.add(label("Location"));
             head.add(Box.createHorizontalGlue());
-            AppButton reset = new AppButton("Reset to current view", null, AppButton.Style.GHOST, true);
-            reset.setToolTipText("Take the view, palette and picture from the main window as they are now");
-            reset.addActionListener(_ -> resetToCurrentView());
-            head.add(reset);
+            syncButton = new AppButton("Sync to current view", null, AppButton.Style.GHOST, true);
+            syncButton.setToolTipText("Take the view, palette and picture from the main window as they are now");
+            syncButton.addActionListener(_ -> resetToCurrentView());
+            syncButton.setEnabled(false);
+            head.add(syncButton);
             box.add(head);
             box.add(gap(2));
 
@@ -485,6 +536,7 @@ public final class RenderDialog {
             nameEdited = false;
             suggestName();
             refreshEstimate();
+            refreshSync();
         }
 
         private void fillLocation() {
