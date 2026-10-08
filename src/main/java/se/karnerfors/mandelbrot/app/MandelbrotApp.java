@@ -69,7 +69,7 @@ public class MandelbrotApp {
         SessionStore sessionStore = new SessionStore(SessionStore.defaultDirectory());
         Optional<SessionState> remembered = sessionStore.load();
 
-        FractalPanel fractalPanel = new FractalPanel(1000, 700);
+        FractalPanel fractalPanel = new FractalPanel(1100, 700);
         if (remembered.isPresent()) {
             try {
                 fractalPanel.restoreSession(remembered.get().view(), remembered.get().supersample());
@@ -86,6 +86,9 @@ public class MandelbrotApp {
                 new AtomicReference<>(remembered.map(SessionState::export).orElse(null));
         Rectangle[] normalBounds = { null };
         JuliaSplit[] splitRef = { null };
+        // Several library entries can hold identical colours: remember which one was picked (kept between runs;
+        // the colours still decide, so a name that no longer matches them is simply ignored).
+        String[] pickedName = { remembered.map(SessionState::paletteIdentity).orElse(null) };
         SessionRecorder recorder = new SessionRecorder(sessionStore, () -> new SessionState(SessionState.CURRENT_VERSION,
                 MandelbrotConfig.capture(fractalPanel.getCurrentViewport(), fractalPanel.getPalette(),
                         fractalPanel.getRenderSettings()),
@@ -93,7 +96,8 @@ public class MandelbrotApp {
                 windowData(frame, normalBounds[0]), exportChoices.get(),
                 // Julia is showing: keep the zoom of the Mandelbrot view we came from (otherwise the view is it).
                 fractalPanel.getRenderSettings().algorithm() == RenderAlgorithm.JULIA && splitRef[0] != null
-                        ? splitRef[0].lastMandelbrotZoom() : null));
+                        ? splitRef[0].lastMandelbrotZoom() : null,
+                pickedName[0]));
 
         javax.swing.JPanel stage = new javax.swing.JPanel(new BorderLayout());
         stage.add(fractalPanel, BorderLayout.CENTER);
@@ -104,7 +108,6 @@ public class MandelbrotApp {
         // The palette button is labelled with the name of the active palette, or "Custom" when it is not in the library.
         PaletteLibrary paletteLibrary = new PaletteLibrary(SessionStore.defaultDirectory());
         // Several entries can hold identical colours (a copy saved without edits): remember which one was picked.
-        String[] pickedName = { null };
         Runnable updatePaletteLabel = () -> {
             topBar.palette.setLabel(paletteLibrary.nameOf(fractalPanel.getPalette(), pickedName[0])
                     .map(MandelbrotApp::shortLabel).orElse("Custom"));

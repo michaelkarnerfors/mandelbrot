@@ -149,8 +149,13 @@ public final class PaletteMenu {
             if (mine) {
                 AppButton delete = AppButton.iconButton(Icons.Glyph.TRASH, "Delete " + entry.name(), AppButton.Style.GHOST, true);
                 delete.addActionListener(_ -> {
+                    // The confirmation is a window of its own and would dismiss the menu: hide it, then bring it back.
+                    Component invoker = popup.getInvoker();
                     popup.setVisible(false);
                     delete(entry.name(), library, host);
+                    if (invoker != null && invoker.isShowing()) {
+                        PaletteMenu.show(invoker, library, host);
+                    }
                 });
                 add(delete);
             }

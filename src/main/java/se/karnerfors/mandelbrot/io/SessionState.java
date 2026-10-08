@@ -5,7 +5,8 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 /**
  * What the app remembers from one run to the next: where you were looking, how it was coloured,
  * the supersample factor, the window, and the last export choices. While Julia is showing it also keeps
- * the zoom of the Mandelbrot view you came from ({@code mandelbrotZoom}), so going back lands at that zoom. Written to
+ * the name of the library palette you picked ({@code paletteIdentity}: only a tie-breaker between entries with
+ * identical colours, the colours always decide), and the zoom of the Mandelbrot view you came from ({@code mandelbrotZoom}), so going back lands at that zoom. Written to
  * {@code ~/mandelbrot/state.json} by {@link SessionStore}.
  *
  * <p>The view part is a plain {@link MandelbrotConfig}, the same shape bookmarks will use later, so
@@ -15,7 +16,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record SessionState(int version, MandelbrotConfig view, int supersample, WindowData window, ExportData export,
-        Double mandelbrotZoom) {
+        Double mandelbrotZoom, String paletteIdentity) {
 
     /** Bump when the shape of this record changes incompatibly. */
     public static final int CURRENT_VERSION = 1;
@@ -33,11 +34,20 @@ public record SessionState(int version, MandelbrotConfig view, int supersample, 
         if (mandelbrotZoom != null && (!Double.isFinite(mandelbrotZoom) || mandelbrotZoom <= 0)) {
             mandelbrotZoom = null;
         }
+        if (paletteIdentity != null && (paletteIdentity.isBlank() || paletteIdentity.length() > 200)) {
+            paletteIdentity = null;
+        }
+    }
+
+    /** Without a remembered Mandelbrot zoom or palette identity. */
+    public SessionState(int version, MandelbrotConfig view, int supersample, WindowData window, ExportData export,
+            Double mandelbrotZoom) {
+        this(version, view, supersample, window, export, mandelbrotZoom, null);
     }
 
     /** Without a remembered Mandelbrot zoom (the view itself is the Mandelbrot one, or nothing was kept). */
     public SessionState(int version, MandelbrotConfig view, int supersample, WindowData window, ExportData export) {
-        this(version, view, supersample, window, export, null);
+        this(version, view, supersample, window, export, null, null);
     }
 
     /** True when the saved view can safely be handed to the renderer (see {@link MandelbrotConfig#isUsable()}). */
