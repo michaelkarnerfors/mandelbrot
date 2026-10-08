@@ -63,24 +63,29 @@ public final class Thumbnails {
     }
 
     private static BufferedImage scale(BufferedImage source) {
+        return cover(source, WIDTH, HEIGHT);
+    }
+
+    /** Crops {@code source} to the aspect ratio of {@code width x height} around its centre and scales it to that size. */
+    public static BufferedImage cover(BufferedImage source, int width, int height) {
         int sw = source.getWidth();
         int sh = source.getHeight();
-        // Largest 3:2 rectangle centred in the source.
+        // Largest rectangle with the target's proportions, centred in the source.
         int cw = sw;
-        int ch = (int) Math.round(sw * (double) HEIGHT / WIDTH);
+        int ch = (int) Math.round(sw * (double) height / width);
         if (ch > sh) {
             ch = sh;
-            cw = (int) Math.round(sh * (double) WIDTH / HEIGHT);
+            cw = (int) Math.round(sh * (double) width / height);
         }
         int cx = (sw - cw) / 2;
         int cy = (sh - ch) / 2;
 
         // Halve repeatedly while the picture is much bigger than the target: much smoother than one big jump.
         BufferedImage current = toRgb(source.getSubimage(cx, cy, Math.max(1, cw), Math.max(1, ch)));
-        while (current.getWidth() >= WIDTH * 2 && current.getHeight() >= HEIGHT * 2) {
+        while (current.getWidth() >= width * 2 && current.getHeight() >= height * 2) {
             current = resize(current, current.getWidth() / 2, current.getHeight() / 2);
         }
-        return resize(current, WIDTH, HEIGHT);
+        return resize(current, width, height);
     }
 
     private static BufferedImage toRgb(BufferedImage image) {

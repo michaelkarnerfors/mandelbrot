@@ -1,6 +1,7 @@
 package se.karnerfors.mandelbrot.app;
 
 import java.awt.BorderLayout;
+import java.awt.Desktop;
 import java.awt.Dimension;
 import java.awt.Point;
 import java.awt.GraphicsDevice;
@@ -10,8 +11,10 @@ import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
+import java.io.File;
 import java.io.IOException;
 import java.util.Optional;
+import java.util.OptionalDouble;
 import java.util.concurrent.atomic.AtomicReference;
 
 import javax.swing.JDialog;
@@ -29,13 +32,16 @@ import se.karnerfors.mandelbrot.math.Complex;
 import se.karnerfors.mandelbrot.render.IterationGrid;
 import se.karnerfors.mandelbrot.render.JuliaPreset;
 import se.karnerfors.mandelbrot.render.RenderAlgorithm;
+import se.karnerfors.mandelbrot.render.RenderJob;
+import se.karnerfors.mandelbrot.render.RenderQueue;
 import se.karnerfors.mandelbrot.render.RenderSettings;
 import se.karnerfors.mandelbrot.ui.BookmarkPopover;
-import se.karnerfors.mandelbrot.ui.ExportPanel;
 import se.karnerfors.mandelbrot.ui.FractalPanel;
 import se.karnerfors.mandelbrot.palette.Palette;
 import se.karnerfors.mandelbrot.ui.PaletteEditorPanel;
 import se.karnerfors.mandelbrot.ui.PaletteMenu;
+import se.karnerfors.mandelbrot.ui.RenderDialog;
+import se.karnerfors.mandelbrot.ui.RenderQueuePopover;
 import se.karnerfors.mandelbrot.ui.PaletteSwatchIcon;
 import se.karnerfors.mandelbrot.ui.RenderStatus;
 import se.karnerfors.mandelbrot.ui.StatusBar;
@@ -73,7 +79,6 @@ public class MandelbrotApp {
         RenderSettings initialSettings = fractalPanel.getRenderSettings();
 
         JFrame frame = new JFrame("Mandelbrot / Julia — " + fractalPanel.getWorkerThreadCount() + " render threads");
-        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 
         AtomicReference<SessionState.ExportData> exportChoices =
                 new AtomicReference<>(remembered.map(SessionState::export).orElse(null));
@@ -304,21 +309,6 @@ public class MandelbrotApp {
         };
         topBar.palette.addActionListener(_ -> PaletteMenu.show(topBar.palette, paletteLibrary, menuHost[0]));
 
-        topBar.render.addActionListener(_ -> {
-            JDialog exportDialog = new JDialog(frame, "Render to File", true);
-            exportDialog.setResizable(false);
-            ExportPanel exportPanel = new ExportPanel(fractalPanel.getWidth(), fractalPanel.getHeight(),
-                    fractalPanel.getCurrentViewport(), fractalPanel.getRenderSettings(), fractalPanel.getPalette(),
-                    exportChoices.get(), choices -> {
-                        exportChoices.set(choices);
-                        recorder.markDirty();
-                    }, () -> exportDialog.setVisible(false));
-            exportDialog.getContentPane().add(exportPanel);
-            exportDialog.pack();
-            exportDialog.setLocationRelativeTo(frame);
-            exportDialog.setVisible(true);
-        });
-
         // Bookmarks: places you want to come back to (replaces the old Save/Load buttons).
         BookmarkStore bookmarkStore = new BookmarkStore(SessionStore.defaultDirectory());
         BookmarkPopover.Host bookmarkHost = new BookmarkPopover.Host() {
@@ -376,6 +366,145 @@ public class MandelbrotApp {
             refreshStatus.run();
         }));
 
+        // Render…: pictures are added to a queue that draws them one at a time in the background.
+        RenderQueue renderQueue = new RenderQueue();
+        renderQueue.addChangeListener(() -> statusBar.queue.update(renderQueue));
+        File rendersFolder = SessionStore.defaultDirectory().resolve("renders").toFile();
+        RenderQueuePopover.Host queueHost = new RenderQueuePopover.Host() {
+            @Override
+            public void open(File file) {
+                try {
+                    Desktop.getDesktop().open(file);
+                } catch (IOException | RuntimeException ex) {
+                    JOptionPane.showMessageDialog(frame, "Could not open " + file.getName() + ": " + ex.getMessage(),
+                            "Open failed", JOptionPane.ERROR_MESSAGE);
+                }
+            }
+
+            @Override
+            public void showInFolder(File file) {
+                try {
+                    Desktop desktop = Desktop.getDesktop();
+                    if (desktop.isSupported(Desktop.Action.BROWSE_FILE_DIR)) {
+                        desktop.browseFileDirectory(file);
+                    } else {
+                        desktop.open(file.getAbsoluteFile().getParentFile());
+                    }
+                } catch (IOException | RuntimeException ex) {
+                    JOptionPane.showMessageDialog(frame, "Could not show the folder: " + ex.getMessage(),
+                            "Show in folder failed", JOptionPane.ERROR_MESSAGE);
+                }
+            }
+
+            @Override
+            public void openRendersFolder() {
+                try {
+                    File folder = rendersFolder;
+                    java.nio.file.Files.createDirectories(folder.toPath());
+                    Desktop.getDesktop().open(folder);
+                } catch (IOException | RuntimeException ex) {
+                    JOptionPane.showMessageDialog(frame, "Could not open the renders folder: " + ex.getMessage(),
+                            "Open failed", JOptionPane.ERROR_MESSAGE);
+                }
+            }
+        };
+        statusBar.queue.addActionListener(_ -> RenderQueuePopover.show(statusBar.queue, renderQueue, queueHost));
+
+        RenderDialog.Host renderHost = new RenderDialog.Host() {
+            @Override
+            public MandelbrotConfig view() {
+                return MandelbrotConfig.capture(fractalPanel.getCurrentViewport(), fractalPanel.getPalette(),
+                        fractalPanel.getRenderSettings());
+            }
+
+            @Override
+            public Palette palette() {
+                return fractalPanel.getPalette();
+            }
+
+            @Override
+            public String paletteLabel() {
+                return paletteLibrary.nameOf(fractalPanel.getPalette(), pickedName[0]).orElse("Custom");
+            }
+
+            @Override
+            public Dimension windowSize() {
+                return fractalPanel.getSize();
+            }
+
+            @Override
+            public java.awt.image.BufferedImage snapshot() {
+                return fractalPanel.snapshot();
+            }
+
+            @Override
+            public SessionState.ExportData remembered() {
+                return exportChoices.get();
+            }
+
+            @Override
+            public OptionalDouble secondsPerSample() {
+                RenderStatus status = latestStatus.get();
+                int pixels = fractalPanel.getWidth() * fractalPanel.getHeight();
+                if (status.stage() != RenderStatus.Stage.SETTLED || status.millis() <= 0 || pixels <= 0) {
+                    return OptionalDouble.empty();
+                }
+                double samples = (double) pixels * status.settleFactor() * status.settleFactor();
+                return OptionalDouble.of(status.millis() / 1000.0 / samples);
+            }
+
+            @Override
+            public int settleFactor() {
+                return fractalPanel.getRenderSettings().supersampleFactor();
+            }
+
+            @Override
+            public File defaultFolder() {
+                return rendersFolder;
+            }
+
+            @Override
+            public boolean queued(File file) {
+                return renderQueue.usesFile(file);
+            }
+        };
+        JDialog[] renderDialog = { null };
+        topBar.render.addActionListener(_ -> {
+            if (renderDialog[0] != null && renderDialog[0].isShowing()) {
+                renderDialog[0].toFront();
+                return;
+            }
+            renderDialog[0] = RenderDialog.show(frame, topBar.render, renderHost, request -> {
+                renderQueue.add(request.view(), request.paletteLabel(), request.framingScale(), request.width(),
+                        request.height(), request.supersample(), request.file(), request.thumbnail());
+                exportChoices.set(new SessionState.ExportData(request.width(), request.height(), request.supersample(),
+                        request.file().getAbsolutePath()));
+                recorder.markDirty();
+            });
+        });
+
+        // Closing with pictures still being drawn would lose them: ask first.
+        frame.setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
+        frame.addWindowListener(new WindowAdapter() {
+            @Override
+            public void windowClosing(WindowEvent e) {
+                if (renderQueue.hasActiveJobs()) {
+                    int active = renderQueue.count(RenderJob.State.RENDERING) + renderQueue.count(RenderJob.State.WAITING);
+                    int answer = JOptionPane.showConfirmDialog(frame,
+                            active + (active == 1 ? " picture is" : " pictures are")
+                                    + " still in the render queue. Quit and lose "
+                                    + (active == 1 ? "it?" : "them?"),
+                            "Quit with renders in progress", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+                    if (answer != JOptionPane.YES_OPTION) {
+                        return;
+                    }
+                }
+                recorder.flush();
+                renderQueue.cancelAll();
+                System.exit(0);
+            }
+        });
+
         frame.getContentPane().add(topBar, BorderLayout.NORTH);
         frame.getContentPane().add(fractalPanel, BorderLayout.CENTER);
         frame.getContentPane().add(statusBar, BorderLayout.SOUTH);
@@ -405,12 +534,6 @@ public class MandelbrotApp {
             }
         });
         frame.addWindowStateListener(_ -> recorder.markDirty());
-        frame.addWindowListener(new WindowAdapter() {
-            @Override
-            public void windowClosing(WindowEvent e) {
-                recorder.flush();
-            }
-        });
         frame.setVisible(true);
         SwingUtilities.invokeLater(fractalPanel::requestFocusInWindow);
 

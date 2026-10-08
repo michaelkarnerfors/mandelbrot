@@ -30,6 +30,7 @@ public final class StatusBar extends JPanel {
 
     public final AppButton goTo = new AppButton("Go to…", null, AppButton.Style.OUTLINE, true);
     public final AppButton themeToggle;
+    public final QueueChip queue = new QueueChip();
     private final StatusChip chip = new StatusChip();
 
     private final ThemedLabel hint = new ThemedLabel("Left-drag: zoom · Right-drag: pan · Wheel: zoom", Token.MUTED,
@@ -63,6 +64,8 @@ public final class StatusBar extends JPanel {
         add(Box.createHorizontalStrut(12));
         add(center(goTo));
         add(Box.createHorizontalGlue());
+        add(center(queue));
+        add(Box.createHorizontalStrut(8));
         add(center(chip));
         add(Box.createHorizontalStrut(8));
         add(center(themeToggle));
