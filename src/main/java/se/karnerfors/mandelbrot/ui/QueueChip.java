@@ -42,6 +42,9 @@ public final class QueueChip extends JComponent implements Accessible {
     private String percent = "";
     private Token tone = Token.ACCENT;
     private boolean hover;
+    /** True while a job is being drawn: the dot pulses so a long render looks alive. */
+    private boolean busy;
+    private final javax.swing.Timer pulse = new javax.swing.Timer(50, _ -> repaint(PAD - 2, 0, 10, getHeight()));
 
     public QueueChip() {
         setVisible(false);
@@ -97,6 +100,7 @@ public final class QueueChip extends JComponent implements Accessible {
         int waiting = queue.count(RenderJob.State.WAITING);
         int failed = queue.count(RenderJob.State.FAILED);
         int done = queue.count(RenderJob.State.DONE);
+        boolean newBusy = rendering > 0;
         String newText;
         String newPercent = "";
         Token newTone = Token.ACCENT;
@@ -123,6 +127,14 @@ public final class QueueChip extends JComponent implements Accessible {
             newText = done + (done == 1 ? " render done" : " renders done");
             newTone = Token.OK;
         }
+        if (newBusy != busy) {
+            busy = newBusy;
+            if (busy && isDisplayable()) {
+                pulse.start();
+            } else {
+                pulse.stop();
+            }
+        }
         if (newText.equals(text) && newPercent.equals(percent) && newTone == tone) {
             return;
         }
@@ -132,6 +144,20 @@ public final class QueueChip extends JComponent implements Accessible {
         setVisible(!text.isEmpty());
         revalidate();
         repaint();
+    }
+
+    @Override
+    public void addNotify() {
+        super.addNotify();
+        if (busy) {
+            pulse.start();
+        }
+    }
+
+    @Override
+    public void removeNotify() {
+        pulse.stop();
+        super.removeNotify();
     }
 
     @Override
@@ -168,7 +194,14 @@ public final class QueueChip extends JComponent implements Accessible {
             g2.setColor(ink);
             g2.draw(pill);
 
+            if (busy) {
+                // A slow breath, about 1.2 s a cycle, between full and under half strength.
+                double phase = (System.nanoTime() % 1_200_000_000L) / 1_200_000_000.0;
+                double strength = 0.45 + 0.55 * (0.5 + 0.5 * Math.cos(2 * Math.PI * phase));
+                g2.setColor(Theme.withAlpha(ink, (int) Math.round(255 * strength)));
+            }
             g2.fill(new Ellipse2D.Float(PAD, (getHeight() - 6) / 2f, 6, 6));
+            g2.setColor(ink);
             g2.setFont(Theme.sansMedium(12f));
             FontMetrics fm = g2.getFontMetrics();
             int baseline = (getHeight() - fm.getHeight()) / 2 + fm.getAscent();
