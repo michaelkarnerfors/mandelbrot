@@ -37,6 +37,7 @@ import se.karnerfors.mandelbrot.palette.Palette;
 import se.karnerfors.mandelbrot.render.ImageExporter;
 import se.karnerfors.mandelbrot.render.RenderAlgorithm;
 import se.karnerfors.mandelbrot.render.RenderQueue;
+import se.karnerfors.mandelbrot.render.RenderSettings;
 import se.karnerfors.mandelbrot.ui.Theme.Token;
 
 /**
@@ -110,7 +111,6 @@ public final class RenderDialog {
 
     private static final int WIDTH = 480;
     private static final int MAX_SIDE = 16384;
-    private static final Integer[] FACTORS = { 1, 2, 4, 9 };
 
     private RenderDialog() {
     }
@@ -181,7 +181,8 @@ public final class RenderDialog {
             }
             aspectControl = new SegmentedControl<>(List.of(Aspect.values()), initialAspect, Aspect::toString);
             int initialFactor = saved != null ? saved.supersample() : host.settleFactor();
-            factorControl = new SegmentedControl<>(List.of(FACTORS), initialFactor, f -> f + "x");
+            factorControl = new SegmentedControl<>(RenderSettings.SUPERSAMPLE_FACTORS, initialFactor,
+                    RenderSettings::supersampleLabel);
 
             JPanel content = new JPanel();
             content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
@@ -340,7 +341,7 @@ public final class RenderDialog {
         }
 
         private JComponent factorSection() {
-            JPanel box = section("Settle at");
+            JPanel box = section("Super-sampling");
             JPanel row = new JPanel();
             row.setLayout(new BoxLayout(row, BoxLayout.X_AXIS));
             row.setOpaque(false);
@@ -351,7 +352,7 @@ public final class RenderDialog {
             factorControl.setAlignmentY(Component.CENTER_ALIGNMENT);
             factorNote.setAlignmentY(Component.CENTER_ALIGNMENT);
             box.add(row);
-            factorNote.setText(host.remembered() != null ? "Remembered from last render" : "Samples per pixel along each axis");
+            factorNote.setText(host.remembered() != null ? "Remembered from last render" : "Grid of samples behind each pixel");
             return box;
         }
 
@@ -644,7 +645,7 @@ public final class RenderDialog {
                 return;
             }
             String kind = view.fractal().algorithm() == RenderAlgorithm.JULIA ? "julia" : "mandelbrot";
-            String base = kind + "-" + resolution().width() + "x" + resolution().height() + "-" + factor() + "x";
+            String base = kind + "-" + resolution().width() + "x" + resolution().height() + "-" + factor() + "x" + factor();
             String name = base + ".png";
             int n = 2;
             while (new File(folder(), name).exists() || host.queued(new File(folder(), name))) {

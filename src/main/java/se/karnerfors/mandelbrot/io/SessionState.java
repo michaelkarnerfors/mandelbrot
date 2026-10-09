@@ -2,6 +2,8 @@ package se.karnerfors.mandelbrot.io;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
+import se.karnerfors.mandelbrot.render.RenderSettings;
+
 /**
  * What the app remembers from one run to the next: where you were looking, how it was coloured,
  * the supersample factor, the window, and the last export choices. While Julia is showing it also keeps
@@ -21,10 +23,8 @@ public record SessionState(int version, MandelbrotConfig view, int supersample, 
     /** Bump when the shape of this record changes incompatibly. */
     public static final int CURRENT_VERSION = 1;
 
-    private static final int[] SUPERSAMPLE_FACTORS = { 1, 2, 4, 9 };
-
     public SessionState {
-        supersample = validFactor(supersample);
+        supersample = RenderSettings.validSupersampleFactor(supersample);
         if (window != null && !window.valid()) {
             window = null;
         }
@@ -55,15 +55,6 @@ public record SessionState(int version, MandelbrotConfig view, int supersample, 
         return view != null && view.isUsable();
     }
 
-    static int validFactor(int factor) {
-        for (int allowed : SUPERSAMPLE_FACTORS) {
-            if (allowed == factor) {
-                return factor;
-            }
-        }
-        return 1;
-    }
-
     /** The main window's normal (not maximised) bounds, and whether it was maximised. */
     public record WindowData(int x, int y, int width, int height, boolean maximized) {
         boolean valid() {
@@ -77,7 +68,7 @@ public record SessionState(int version, MandelbrotConfig view, int supersample, 
      */
     public record ExportData(int width, int height, int supersample, String outputFile) {
         public ExportData {
-            supersample = validFactor(supersample);
+            supersample = RenderSettings.validSupersampleFactor(supersample);
         }
 
         boolean valid() {

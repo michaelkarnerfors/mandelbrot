@@ -64,7 +64,7 @@ public final class MandelbrotCli {
             Options:
               -o, --output FILE    where to write the PNG (default: the input's name with .png)
               --size WxH           picture size in pixels (default 1920x1080)
-              --samples N          supersampling per axis: 1, 2, 4 or 9 (default 2)
+              --samples N          supersampling per axis: 1, 2, 3 or 4 (default 2, a 2x2 grid per pixel)
               --bookmark NAME|N    which bookmark to use when the file holds several (a name, or 1 for the first)
               --window WxH         the window size the view's zoom refers to (default 1100x700). The picture
                                    frames the same area that window showed.
@@ -165,8 +165,8 @@ public final class MandelbrotCli {
                 case "--window" -> window = size(value(args, ++i, arg), arg);
                 case "--samples" -> {
                     samples = integer(value(args, ++i, arg), arg);
-                    if (samples != 1 && samples != 2 && samples != 4 && samples != 9) {
-                        throw new UsageException("--samples must be 1, 2, 4 or 9, not " + samples);
+                    if (!RenderSettings.SUPERSAMPLE_FACTORS.contains(samples)) {
+                        throw new UsageException("--samples must be 1, 2, 3 or 4, not " + samples);
                     }
                 }
                 case "--threads" -> {
@@ -306,7 +306,7 @@ public final class MandelbrotCli {
                 settings);
 
         int threads = o.threads() != null ? o.threads() : Math.max(1, Runtime.getRuntime().availableProcessors());
-        out.println("Rendering " + size[0] + "x" + size[1] + " at " + samples + "x, " + algorithm.toString().toLowerCase(Locale.ROOT)
+        out.println("Rendering " + size[0] + "x" + size[1] + " at " + samples + "x" + samples + ", " + algorithm.toString().toLowerCase(Locale.ROOT)
                 + ", " + threads + " thread" + (threads == 1 ? "" : "s") + "...");
         int total = Math.max(1, ImageExporter.tileCount(target, samples));
         AtomicInteger done = new AtomicInteger();

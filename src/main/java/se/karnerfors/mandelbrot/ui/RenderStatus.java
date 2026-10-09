@@ -5,7 +5,7 @@ package se.karnerfors.mandelbrot.ui;
  * {@code setRenderStatusListener}.
  *
  * <p>Every navigation first draws a quick 1x preview and, once that is on screen and you are not
- * moving around, refines the same view at the quality you settle at. The stage says where we are
+ * moving around, refines the same view at the chosen super-sampling. The stage says where we are
  * in that sequence.
  *
  * @param stage         what the renderer is doing right now

@@ -18,11 +18,11 @@ A top bar with the controls, the fractal in the middle, and a status bar underne
 
 Zoom is limited to roughly 0.01 to 10¹³. The maths is plain double precision, so a very deep zoom turns blocky long before the upper limit.
 
-## Quality: settle at
+## Quality: super-sampling
 
-Moving always draws a quick 1x preview. When you stop, the same view refines on its own at the factor chosen in **Settle at** (1x, 2x, 4x, 9x); moving again cancels the refinement and starts over from a preview. The status bar shows both steps ("Preview → Refining 4x", then "Settled at 4x").
+Moving always draws a quick 1×1 preview (one sample per pixel). When you stop, the same view refines on its own at the quality chosen in **Super-sampling**: 1×1, 2×2, 3×3 or 4×4, the grid of samples averaged into each pixel, so 3×3 is 9 samples and 4×4 is 16. Moving again cancels the refinement and starts over from a preview. The status bar shows both steps ("Preview → Refining 3×3", then "Settled at 3×3").
 
-Higher factors look smoother and take longer. 9x on a large window needs well over 1 GB of Java heap; a warning appears next to the control, and if memory runs out the preview stays on screen. Start Java with a larger `-Xmx` to go higher.
+Higher settings look smoother and take longer: the work grows with the number of samples, so 4×4 costs 16 times as much as 1×1. On a very large window (a full 4K screen, say) 4×4 can need over 1 GB of Java heap; a warning appears next to the control, and if memory runs out the preview stays on screen. Start Java with a larger `-Xmx` to go higher.
 
 ## Palettes
 
@@ -74,7 +74,7 @@ Choosing Mandelbrot in the fractal control (or opening a Mandelbrot bookmark) cl
 
 In the dialog you choose:
 - the **size**: window size and multiples of it, or presets from 1024 px wide up to 8K in 4:3, 16:9 and 21:9;
-- the **quality** (samples per pixel along each axis, 1x to 9x);
+- the **quality** (the grid of samples behind each pixel, 1×1 to 4×4);
 - the **location**: Re, Im and zoom, prefilled from the view and editable;
 - the **file** and folder.
 
@@ -82,7 +82,7 @@ In the dialog you choose:
 
 When you add the job, the view, palette and settings are frozen, and the picture frames the same area as the window. Jobs are drawn one at a time at low priority, so the live view stays usable. Rendering to a file that already exists asks before replacing it.
 
-The queue chip in the status bar summarises the queue and opens it: progress and time left, cancel or remove, and for finished pictures **Open** and **Show in folder**. A failed job (out of memory at 9x, say) offers a lighter retry. Memory use is bounded by the output image size, not by the supersampled size.
+The queue chip in the status bar summarises the queue and opens it: progress and time left, cancel or remove, and for finished pictures **Open** and **Show in folder**. A failed job (out of memory at 4×4, say) offers a lighter retry. Memory use is bounded by the output image size, not by the supersampled size.
 
 Pictures go to `~/mandelbrot/renders` unless you choose another folder. Jobs are kept in memory only: quitting asks first if any are unfinished.
 
@@ -106,7 +106,7 @@ Without arguments the jar opens the window instead. JVM options such as `-Xmx` g
 |---|---|
 | `-o`, `--output FILE` | Where to write the PNG. Default: the input's name with `.png`. Never overwrites the input. |
 | `--size WxH` | Picture size, up to 16384 per side. Default 1920x1080. |
-| `--samples N` | Supersampling per axis: 1, 2, 4 or 9. Default 2. |
+| `--samples N` | Supersampling per axis: 1, 2, 3 or 4 (a 3x3 grid is 9 samples per pixel). Default 2. |
 | `--window WxH` | The window size the view's zoom refers to. Default 1100x700, the app's default canvas. The picture frames the same area as that window, like the Render dialog. |
 | `--fractal`, `--c` | Override the fractal (`mandelbrot` or `julia`) and the Julia constant (`-0.8,0.156` or `-0.8+0.156i`). |
 | `--re`, `--im`, `--zoom` | Override the centre and zoom of the view. |

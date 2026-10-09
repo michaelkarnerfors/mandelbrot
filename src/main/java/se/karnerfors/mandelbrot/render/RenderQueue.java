@@ -29,7 +29,6 @@ import se.karnerfors.mandelbrot.palette.Palette;
  */
 public final class RenderQueue {
 
-    private static final int[] LIGHTER = { 9, 4, 2, 1 };
 
     private final List<RenderJob> jobs = new ArrayList<>();
     private final AtomicInteger nextId = new AtomicInteger(1);
@@ -189,7 +188,7 @@ public final class RenderQueue {
                     palette, settings));
             job.finish();
         } catch (OutOfMemoryError ex) {
-            job.fail("Out of memory at " + job.supersample() + "x", lighter(job.supersample()));
+            job.fail("Out of memory at " + RenderSettings.supersampleLabel(job.supersample()), lighter(job.supersample()));
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
             job.fail("Interrupted", 0);
@@ -226,9 +225,9 @@ public final class RenderQueue {
         }
     }
 
-    /** The next lighter factor below {@code factor}, or 0 when it is already 1x. */
+    /** The next lighter factor below {@code factor}, or 0 when it is already 1×1. */
     static int lighter(int factor) {
-        for (int candidate : LIGHTER) {
+        for (int candidate : RenderSettings.SUPERSAMPLE_FACTORS.reversed()) {
             if (candidate < factor) {
                 return candidate;
             }

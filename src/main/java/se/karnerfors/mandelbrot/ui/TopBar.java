@@ -16,6 +16,7 @@ import javax.swing.JPanel;
 import javax.swing.border.EmptyBorder;
 
 import se.karnerfors.mandelbrot.render.RenderAlgorithm;
+import se.karnerfors.mandelbrot.render.RenderSettings;
 import se.karnerfors.mandelbrot.ui.Theme.Token;
 
 /**
@@ -34,9 +35,9 @@ public final class TopBar extends JPanel {
     /** The memory note only appears when settling would use more than this share of the Java heap. */
     private static final double MEMORY_NOTE_HEAP_SHARE = 0.35;
 
-    private static final String SETTLE_TOOLTIP = "<html>Quality to settle at. Moving around draws a quick 1x preview,<br>"
-            + "then the view refines to this factor once you stop.<br>"
-            + "<i>Samples per pixel along each axis: 4x means 16 samples.</i></html>";
+    private static final String SUPERSAMPLING_TOOLTIP = "<html>Super-sampling: the grid of samples averaged into each pixel,<br>"
+            + "so 3×3 means 9 samples. Moving around draws a quick 1×1 preview,<br>"
+            + "then the view refines to this quality once you stop.</html>";
 
     public final AppButton home = AppButton.iconButton(Icons.Glyph.HOME, "Home", AppButton.Style.GHOST, false);
     public final AppButton back = AppButton.iconButton(Icons.Glyph.BACK, "Back", AppButton.Style.GHOST, false);
@@ -51,7 +52,7 @@ public final class TopBar extends JPanel {
     public final AppButton bookmarks = new AppButton("Bookmarks", Icons.Glyph.STAR, AppButton.Style.OUTLINE, false);
     public final AppButton render = new AppButton("Render…", Icons.Glyph.RENDER, AppButton.Style.PRIMARY, false);
 
-    private final ThemedLabel supersampleLabel = new ThemedLabel("SETTLE AT", Token.MUTED, Theme::groupLabelFont);
+    private final ThemedLabel supersampleLabel = new ThemedLabel("SUPER-SAMPLING", Token.MUTED, Theme::groupLabelFont);
     private final ThemedLabel memoryNote = new ThemedLabel("", Token.WARN, () -> Theme.monoMedium(12f));
     private final Component memoryNoteGap = Box.createHorizontalStrut(8);
     private final JPanel cSlot = new JPanel(new CardLayout()) {
@@ -73,8 +74,9 @@ public final class TopBar extends JPanel {
 
         fractal = new SegmentedControl<>(List.of(RenderAlgorithm.values()), algorithm, RenderAlgorithm::toString);
         fractal.setToolTipText("Fractal");
-        supersample = new SegmentedControl<>(List.of(1, 2, 4, 9), supersampleFactor, factor -> factor + "x");
-        supersample.setToolTipText(SETTLE_TOOLTIP);
+        supersample = new SegmentedControl<>(RenderSettings.SUPERSAMPLE_FACTORS, supersampleFactor,
+                RenderSettings::supersampleLabel);
+        supersample.setToolTipText(SUPERSAMPLING_TOOLTIP);
         Dimension noteSize = new Dimension(MEMORY_NOTE_WIDTH, 22);
         memoryNote.setPreferredSize(noteSize);
         memoryNote.setMinimumSize(noteSize);
@@ -142,7 +144,7 @@ public final class TopBar extends JPanel {
 
     /**
      * Shows "≈ 1.2 GB" next to the settle control when drawing the current window at the chosen factor
-     * would take a large share of the Java heap, so the cost of 9x is visible before it bites.
+     * would take a large share of the Java heap, so the cost of 4×4 is visible before it bites.
      */
     public void setMemoryEstimate(long bytes, long maxHeapBytes) {
         boolean warn = maxHeapBytes > 0 && bytes > maxHeapBytes * MEMORY_NOTE_HEAP_SHARE;
@@ -156,7 +158,7 @@ public final class TopBar extends JPanel {
         memoryNote.setToolTipText(warn
                 ? String.format(java.util.Locale.ROOT,
                         "<html>Settling at this quality needs about %.1f GB for this window.<br>"
-                        + "Java may use up to %.1f GB. If memory runs out, the 1x preview stays on screen.</html>",
+                        + "Java may use up to %.1f GB. If memory runs out, the 1×1 preview stays on screen.</html>",
                         gib, maxHeapBytes / (1024.0 * 1024.0 * 1024.0))
                 : null);
     }

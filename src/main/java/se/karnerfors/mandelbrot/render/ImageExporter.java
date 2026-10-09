@@ -20,7 +20,7 @@ import se.karnerfors.mandelbrot.palette.Palette;
  * <p>Unlike {@link Renderer#computeGridParallel}, which allocates one {@link
  * IterationGrid} sized to the *entire* (possibly supersampled) viewport --
  * perfectly fine at ordinary window sizes, but a problem once "ordinary window
- * size" becomes an 8K canvas at 9x supersampling (billions of cells, tens of
+ * size" becomes an 8K canvas at 4x4 supersampling (billions of cells, tens of
  * gigabytes) -- this class allocates only one small grid per tile, computes and
  * colorizes it, downsamples it straight into its slice of the final image, and
  * discards it. Memory stays bounded by the final image size plus a handful of

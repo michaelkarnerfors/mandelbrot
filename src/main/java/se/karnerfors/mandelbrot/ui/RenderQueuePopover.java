@@ -29,6 +29,7 @@ import javax.swing.event.PopupMenuListener;
 
 import se.karnerfors.mandelbrot.render.RenderJob;
 import se.karnerfors.mandelbrot.render.RenderQueue;
+import se.karnerfors.mandelbrot.render.RenderSettings;
 import se.karnerfors.mandelbrot.ui.Theme.Token;
 
 /**
@@ -323,7 +324,7 @@ public final class RenderQueuePopover {
             body.add(title);
             body.add(Box.createVerticalStrut(2));
 
-            String caption = job.width() + "×" + job.height() + " · " + job.supersample() + "x";
+            String caption = job.width() + "×" + job.height() + " · " + RenderSettings.supersampleLabel(job.supersample());
             switch (job.state()) {
                 case WAITING -> body.add(caption(caption + " · " + job.paletteLabel() + heavyNote()));
                 case RENDERING -> {
@@ -348,7 +349,7 @@ public final class RenderQueuePopover {
                     reason.setPreferredSize(null);
                     body.add(reason);
                     body.add(Box.createVerticalStrut(6));
-                    String retryLabel = job.retryFactor() > 0 ? "Retry at " + job.retryFactor() + "x" : "Retry";
+                    String retryLabel = job.retryFactor() > 0 ? "Retry at " + RenderSettings.supersampleLabel(job.retryFactor()) : "Retry";
                     AppButton dismiss = button("Dismiss", () -> queue.remove(job));
                     dismiss.setStyle(AppButton.Style.GHOST);
                     body.add(buttons(button(retryLabel, () -> queue.retry(job, job.retryFactor())), dismiss));

@@ -20,14 +20,15 @@ Michael owns the product and the code. Claude acts as UX/UI designer and impleme
 | Follow-ups | Palette identity remembered across runs, palette menu survives delete, default canvas 1100 x 700 | 310215c |
 | Diligence cleanup | "Sync to current view" in the Render dialog, confirm before deleting a preset, status-bar hint follows the pane, README split into a front page and `docs/user-guide.md` | de0cbb0 |
 | Command-line renderer | `MandelbrotCli` renders from a bookmark, view file or app PNG, with overrides, `--silent` and exit codes for batch use | cf1087c |
-| Runnable jar | `mvn package` builds a self-contained `target/mandelbrot.jar`; `Main` opens the window without arguments and runs `MandelbrotCli` with them. The CLI demo is retired: an input is required | |
+| Runnable jar | `mvn package` builds a self-contained `target/mandelbrot.jar`; `Main` opens the window without arguments and runs `MandelbrotCli` with them. The CLI demo is retired: an input is required | 53bd1c8 |
+| Supersample steps | Super-sampling (top bar, formerly "Settle at"), Render and `--samples` offer 1×1, 2×2, 3×3, 4×4 (was 1x/2x/4x/9x, where 9x meant 81 samples per pixel); saved 9 becomes 4×4 | |
 
 Per-user files live in `~/mandelbrot/` (override with `-Dmandelbrot.home`): `state.json`, `palettes.json`, `bookmarks.json`, `julia-presets.json`, `renders/`. All follow the same pattern: tolerant load, atomic write, `MandelbrotConfig` as the shared representation of "a place".
 
 ## Decisions that still hold
 - Double precision only. The coordinate and iteration math sits behind `Viewport` so a deep-zoom engine (perturbation / arbitrary precision) could replace it later.
 - Rendering is tiled on a thread pool with a generation counter that drops stale tiles. Compute (`IterationGrid`) is separate from colouring (`Colorizer`), so palette edits recolour from cached data.
-- Exports run one at a time at low priority; 9x stays selectable with a warning; live recolour uses one sample per pixel.
+- Exports run one at a time at low priority; the heaviest quality stays selectable with a warning; live recolour uses one sample per pixel.
 - No keyboard navigation and no sharing features for now (deliberately deferred).
 - Go to stays in the status bar plus a modal.
 - Switching Julia to Mandelbrot centres on c at the remembered Mandelbrot zoom (the whole set if none), because you probably want to pick a new c. Back returns to the previous view, so a mistake costs one click.

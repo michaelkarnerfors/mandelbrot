@@ -17,19 +17,20 @@ import javax.accessibility.AccessibleContext;
 import javax.accessibility.AccessibleRole;
 import javax.swing.JComponent;
 
+import se.karnerfors.mandelbrot.render.RenderSettings;
 import se.karnerfors.mandelbrot.ui.Theme.Token;
 
 /**
  * The pill in the status bar that says where the renderer is in its two-step routine: a quick
- * preview first, then the refinement at the quality you settle at.
+ * preview first, then the refinement at the chosen super-sampling.
  *
  * <pre>
- *   ( ) Preview 40%                          drawing the 1x pass
- *   ✓ Preview → ( ) Refining 4x 62%           preview is up, drawing the final quality over it
- *   ● Settled at 4x 0.84 s                    done
+ *   ( ) Preview 40%                          drawing the 1×1 pass
+ *   ✓ Preview → ( ) Refining 4×4 62%           preview is up, drawing the final quality over it
+ *   ● Settled at 4×4 0.84 s                    done
  * </pre>
  *
- * With a settle factor of 1 the preview is the final image, so it just says "Rendering" and then "Settled at 1x".
+ * With a settle factor of 1 the preview is the final image, so it just says "Rendering" and then "Settled at 1×1".
  */
 public final class StatusChip extends JComponent implements Accessible {
 
@@ -76,11 +77,11 @@ public final class StatusChip extends JComponent implements Accessible {
     private String tooltip() {
         return switch (status.stage()) {
             case PREVIEW -> status.settleFactor() > 1
-                    ? "Drawing a quick 1x preview; it refines to " + status.settleFactor() + "x when you stop moving."
+                    ? "Drawing a quick 1×1 preview; it refines to " + label(status) + " when you stop moving."
                     : null;
-            case REFINING -> "Refining this view at " + status.settleFactor() + "x. Moving again restarts from a 1x preview.";
-            case FAILED -> "Not enough memory for " + status.settleFactor()
-                    + "x at this window size. The 1x preview is kept. Pick a lower factor, or start Java with a larger -Xmx.";
+            case REFINING -> "Refining this view at " + label(status) + ". Moving again restarts from a 1×1 preview.";
+            case FAILED -> "Not enough memory for " + label(status)
+                    + " at this window size. The 1×1 preview is kept. Pick a lower factor, or start Java with a larger -Xmx.";
             default -> null;
         };
     }
@@ -93,9 +94,9 @@ public final class StatusChip extends JComponent implements Accessible {
         return switch (status.stage()) {
             case IDLE -> "Ready";
             case PREVIEW -> status.settleFactor() > 1 ? "Preview" : "Rendering";
-            case REFINING -> "Refining " + status.settleFactor() + "x";
-            case SETTLED -> "Settled at " + status.settleFactor() + "x";
-            case FAILED -> "Not enough memory for " + status.settleFactor() + "x";
+            case REFINING -> "Refining " + label(status);
+            case SETTLED -> "Settled at " + label(status);
+            case FAILED -> "Not enough memory for " + label(status);
         };
     }
 
@@ -239,5 +240,9 @@ public final class StatusChip extends JComponent implements Accessible {
                 g2.draw(new Ellipse2D.Double(x + (INDICATOR - 8) / 2.0 + 0.75, cy - 4 + 0.75, 6.5, 6.5));
             }
         }
+    }
+
+    private static String label(RenderStatus status) {
+        return RenderSettings.supersampleLabel(status.settleFactor());
     }
 }

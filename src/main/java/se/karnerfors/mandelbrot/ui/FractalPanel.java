@@ -585,7 +585,7 @@ public final class FractalPanel extends JPanel {
         this.pointTracker = tracker;
     }
 
-    /** Holds back the 4x/9x refinement while something else is driving this panel quickly (a drag elsewhere). */
+    /** Holds back the refinement while something else is driving this panel quickly (a drag elsewhere). */
     public void setRefinementHeld(boolean held) {
         if (refinementHeld == held) {
             return;
