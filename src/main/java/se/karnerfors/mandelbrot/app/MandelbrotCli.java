@@ -33,7 +33,7 @@ import se.karnerfors.mandelbrot.render.RenderSettings;
 
 /**
  * Renders a picture without the window: from a config (a bookmark exported as {@code .json}, or a {@code .png}
- * the app made, which carries its view inside) or, with no input, a built-in deep-zoom demo.
+ * the app made, which carries its view inside).
  *
  * <p>The picture frames the same area the app's Render dialog would: a config's zoom is in terms of a window (by
  * default the app's 1100 x 700 canvas, see {@code --window}), and the output is scaled to contain it. Memory is
@@ -43,8 +43,6 @@ public final class MandelbrotCli {
 
     private static final int DEFAULT_WIDTH = 1920;
     private static final int DEFAULT_HEIGHT = 1080;
-    private static final int DEMO_WIDTH = 3840;
-    private static final int DEMO_HEIGHT = 2160;
     private static final int WINDOW_WIDTH = 1100;
     private static final int WINDOW_HEIGHT = 700;
     private static final int MAX_SIDE = 16384;
@@ -56,17 +54,16 @@ public final class MandelbrotCli {
             + "|(" + NUMBER.pattern() + ")\\s*([+-])\\s*((?:\\d+\\.?\\d*|\\.\\d+)(?:[eE][+-]?\\d+)?)\\s*i");
 
     static final String USAGE = """
-            Usage: MandelbrotCli [input] [options]
+            Usage: java -jar mandelbrot.jar input [options]
 
-            Renders a picture to a PNG file.
+            Renders a picture to a PNG file. Without arguments, the jar opens the explorer window instead.
 
             input            a bookmark or view file (.json), or a .png made by this app. This can be an
                              exported bookmark, or bookmarks.json itself (then pick one with --bookmark).
-                             With no input, a deep-zoom demo is rendered.
 
             Options:
-              -o, --output FILE    where to write the PNG (default: the input's name with .png, or saved.png)
-              --size WxH           picture size in pixels (default 1920x1080; the demo is 3840x2160)
+              -o, --output FILE    where to write the PNG (default: the input's name with .png)
+              --size WxH           picture size in pixels (default 1920x1080)
               --samples N          supersampling per axis: 1, 2, 4 or 9 (default 2)
               --bookmark NAME|N    which bookmark to use when the file holds several (a name, or 1 for the first)
               --window WxH         the window size the view's zoom refers to (default 1100x700). The picture
@@ -80,7 +77,7 @@ public final class MandelbrotCli {
               -h, --help           this text
 
             Exit status: 0 if the picture was written, 1 if the render failed, 2 for a command-line mistake.
-            In a batch: for f in *.json; do java ... MandelbrotCli "$f" -s || echo "failed: $f"; done
+            In a batch: for f in *.json; do java -jar mandelbrot.jar "$f" -s || echo "failed: $f"; done
             """;
 
     /** A mistake on the command line: reported with the usage hint, exit status 2. */
@@ -200,6 +197,9 @@ public final class MandelbrotCli {
                 }
             }
         }
+        if (input == null) {
+            throw new UsageException("no input: give a bookmark or view file (.json), or a .png made by this app");
+        }
         return new Options(input, bookmark, output, size, samples, window, fractal, c, re, im, zoom, threads, silent, false);
     }
 
@@ -276,13 +276,12 @@ public final class MandelbrotCli {
 
     private static int render(Options o, PrintStream out, PrintStream err)
             throws UsageException, IOException, InterruptedException {
-        MandelbrotConfig view = o.input() != null ? load(o.input(), o.bookmark()) : demo();
+        MandelbrotConfig view = load(o.input(), o.bookmark());
         int[] window = o.window() != null ? o.window() : new int[] { WINDOW_WIDTH, WINDOW_HEIGHT };
-        int[] size = o.size() != null ? o.size()
-                : o.input() != null ? new int[] { DEFAULT_WIDTH, DEFAULT_HEIGHT } : new int[] { DEMO_WIDTH, DEMO_HEIGHT };
+        int[] size = o.size() != null ? o.size() : new int[] { DEFAULT_WIDTH, DEFAULT_HEIGHT };
         int samples = o.samples() != null ? o.samples() : DEFAULT_SAMPLES;
         File output = o.output() != null ? o.output() : defaultOutput(o.input());
-        if (o.input() != null && sameFile(o.input(), output)) {
+        if (sameFile(o.input(), output)) {
             throw new UsageException("the output would overwrite the input (" + o.input().getName()
                     + "). Choose another with -o.");
         }
@@ -391,18 +390,7 @@ public final class MandelbrotCli {
         return sb.toString().stripTrailing();
     }
 
-    /** The built-in demo: a deep zoom at 3840x2160 with the classic palette, in terms of the default window. */
-    private static MandelbrotConfig demo() {
-        double scale = Math.min(DEMO_WIDTH / (double) WINDOW_WIDTH, DEMO_HEIGHT / (double) WINDOW_HEIGHT);
-        Viewport view = new Viewport(Complex.fromCartesian(-0.7602490234375D, -0.080498046875D), 6553600.0D / scale,
-                WINDOW_WIDTH, WINDOW_HEIGHT);
-        return MandelbrotConfig.capture(view, Palette.classicRedWhiteBlack(), RenderSettings.defaults());
-    }
-
     private static File defaultOutput(File input) {
-        if (input == null) {
-            return new File("saved.png");
-        }
         String name = input.getName();
         int dot = name.lastIndexOf('.');
         String stem = dot > 0 ? name.substring(0, dot) : name;

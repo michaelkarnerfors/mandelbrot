@@ -20,6 +20,7 @@ Michael owns the product and the code. Claude acts as UX/UI designer and impleme
 | Follow-ups | Palette identity remembered across runs, palette menu survives delete, default canvas 1100 x 700 | 310215c |
 | Diligence cleanup | "Sync to current view" in the Render dialog, confirm before deleting a preset, status-bar hint follows the pane, README split into a front page and `docs/user-guide.md` | de0cbb0 |
 | Command-line renderer | `MandelbrotCli` renders from a bookmark, view file or app PNG, with overrides, `--silent` and exit codes for batch use | cf1087c |
+| Runnable jar | `mvn package` builds a self-contained `target/mandelbrot.jar`; `Main` opens the window without arguments and runs `MandelbrotCli` with them. The CLI demo is retired: an input is required | |
 
 Per-user files live in `~/mandelbrot/` (override with `-Dmandelbrot.home`): `state.json`, `palettes.json`, `bookmarks.json`, `julia-presets.json`, `renders/`. All follow the same pattern: tolerant load, atomic write, `MandelbrotConfig` as the shared representation of "a place".
 
