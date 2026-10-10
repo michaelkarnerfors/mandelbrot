@@ -144,7 +144,7 @@ public final class TopBar extends JPanel {
 
     /**
      * Shows "≈ 1.2 GB" next to the settle control when drawing the current window at the chosen factor
-     * would take a large share of the Java heap, so the cost of 4×4 is visible before it bites.
+     * would take a large share of the Java heap, so the cost of the high settings is visible before it bites.
      */
     public void setMemoryEstimate(long bytes, long maxHeapBytes) {
         boolean warn = maxHeapBytes > 0 && bytes > maxHeapBytes * MEMORY_NOTE_HEAP_SHARE;

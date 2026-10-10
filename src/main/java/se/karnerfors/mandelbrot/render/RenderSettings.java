@@ -12,7 +12,7 @@ import se.karnerfors.mandelbrot.math.Complex;
 public record RenderSettings(int maxIterations, double escapeRadius, int supersampleFactor, RenderAlgorithm algorithm, Complex c) {
 
     /** The supersample factors on offer, per axis, lightest first. */
-    public static final List<Integer> SUPERSAMPLE_FACTORS = List.of(1, 2, 3, 4);
+    public static final List<Integer> SUPERSAMPLE_FACTORS = List.of(1, 2, 3, 4, 6, 8);
 
     /** How a factor is shown: the grid of samples behind each pixel, e.g. "3×3". */
     public static String supersampleLabel(int factor) {
@@ -20,15 +20,17 @@ public record RenderSettings(int maxIterations, double escapeRadius, int supersa
     }
 
     /**
-     * A factor read from a file, made safe. Older versions offered 9 (81 samples per pixel): anything above the
-     * highest step becomes the highest, anything else unknown becomes 1.
+     * A factor read from a file, made safe: the highest step not above it, or 1. Older versions offered 9
+     * (81 samples per pixel), which becomes 8.
      */
     public static int validSupersampleFactor(int factor) {
-        int highest = SUPERSAMPLE_FACTORS.getLast();
-        if (factor > highest) {
-            return highest;
+        int valid = 1;
+        for (int step : SUPERSAMPLE_FACTORS) {
+            if (step <= factor) {
+                valid = step;
+            }
         }
-        return SUPERSAMPLE_FACTORS.contains(factor) ? factor : 1;
+        return valid;
     }
 
     public static RenderSettings defaults() {

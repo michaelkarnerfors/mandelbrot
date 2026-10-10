@@ -167,12 +167,12 @@ public final class RenderQueue {
             se.karnerfors.mandelbrot.math.Viewport target = job.targetViewport();
             RenderSettings settings = job.view().applyTo(RenderSettings.defaults()).withSupersampleFactor(job.supersample());
             Palette palette = job.view().toPalette();
-            int total = Math.max(1, ImageExporter.tileCount(target, job.supersample()));
+            int total = Math.max(1, ImageExporter.tileCount(target));
             AtomicInteger done = new AtomicInteger();
             BufferedImage image = ImageExporter.renderImage(target, settings, palette, tiles, job::cancelRequested, () -> {
                 job.progress(done.incrementAndGet() / (double) total);
                 fireChanged();
-            });
+            }).image();
             if (job.cancelRequested()) {
                 SwingUtilities.invokeLater(() -> {
                     jobs.remove(job);

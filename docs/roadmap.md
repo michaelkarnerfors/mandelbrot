@@ -21,13 +21,15 @@ Michael owns the product and the code. Claude acts as UX/UI designer and impleme
 | Diligence cleanup | "Sync to current view" in the Render dialog, confirm before deleting a preset, status-bar hint follows the pane, README split into a front page and `docs/user-guide.md` | de0cbb0 |
 | Command-line renderer | `MandelbrotCli` renders from a bookmark, view file or app PNG, with overrides, `--silent` and exit codes for batch use | cf1087c |
 | Runnable jar | `mvn package` builds a self-contained `target/mandelbrot.jar`; `Main` opens the window without arguments and runs `MandelbrotCli` with them. The CLI demo is retired: an input is required | 53bd1c8 |
-| Supersample steps | Super-sampling (top bar, formerly "Settle at"), Render and `--samples` offer 1×1, 2×2, 3×3, 4×4 (was 1x/2x/4x/9x, where 9x meant 81 samples per pixel); saved 9 becomes 4×4 | |
+| Supersample steps | Super-sampling (top bar, formerly "Settle at"), Render and `--samples` offer 1×1, 2×2, 3×3, 4×4 (was 1x/2x/4x/9x, where 9x meant 81 samples per pixel); saved 9 becomes 4×4 | bfccb80 |
+| Adaptive super-sampling | Only pixels that differ from a neighbour (colour above 12/255, inside vs outside the set, or a jump of more than a palette segment; mask widened by one pixel) get the n×n samples, now centred on the pixel. The window refines from the preview's samples and keeps them plus the extra ones per tile; factor changes and palette changes top up instead of redrawing. Steps now 1×1 to 8×8 (saved 9 becomes 8×8). Status chip tooltip shows the share refined; estimates and memory notes use it. 1.2× to 8× faster at 4×4, visually identical | |
 
 Per-user files live in `~/mandelbrot/` (override with `-Dmandelbrot.home`): `state.json`, `palettes.json`, `bookmarks.json`, `julia-presets.json`, `renders/`. All follow the same pattern: tolerant load, atomic write, `MandelbrotConfig` as the shared representation of "a place".
 
 ## Decisions that still hold
 - Double precision only. The coordinate and iteration math sits behind `Viewport` so a deep-zoom engine (perturbation / arbitrary precision) could replace it later.
 - Rendering is tiled on a thread pool with a generation counter that drops stale tiles. Compute (`IterationGrid`) is separate from colouring (`Colorizer`), so palette edits recolour from cached data.
+- Super-sampling is adaptive (`AdaptiveSampler`). Benchmarked against uniform sampling: the threshold barely matters between 6 and 20, widening the mask cuts missed pixels about tenfold, and what limits quality is the samples per refined pixel, not the mask. `-Dmandelbrot.adaptiveThreshold=0` refines every pixel, for comparisons. A palette top-up keeps every pixel refined so far (the union), so a view can be slightly better than a fresh render, never worse.
 - Exports run one at a time at low priority; the heaviest quality stays selectable with a warning; live recolour uses one sample per pixel.
 - No keyboard navigation and no sharing features for now (deliberately deferred).
 - Go to stays in the status bar plus a modal.
@@ -38,6 +40,7 @@ Per-user files live in `~/mandelbrot/` (override with `-Dmandelbrot.home`): `sta
 
 ## Outstanding
 - **Preview sometimes incomplete before refinement** (slice 3). Not reproduced; left for another session.
+- **Super-sampling ideas, measured before adopting:** a second adaptive level (refine to n, then to 2n only where a pixel's own samples still disagree) for near-8×8 quality at less time and memory; jittered sample positions (seeded per pixel, so renders stay repeatable) to turn residual moiré into noise.
 - **Automated tests.** The repo has none; the throwaway checks used so far are not in it. Planned as its own session, starting with the stores (`BookmarkStore`, `PaletteLibrary`, `JuliaPresetStore`) and `SessionState` loading.
 - Smaller items are tracked in `docs/known-issues.md`.
 

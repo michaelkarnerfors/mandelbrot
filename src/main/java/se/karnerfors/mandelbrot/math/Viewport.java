@@ -56,6 +56,16 @@ public final class Viewport {
         return Complex.fromCartesian(real, imaginary);
     }
 
+    /**
+     * The point {@code dx}, {@code dy} pixels away from pixel ({@code screenX}, {@code screenY})'s own point:
+     * the sub-pixel sample positions for super-sampling. With zero offsets it is exactly {@link #toComplex(int, int)}.
+     */
+    public Complex toComplex(int screenX, int screenY, double dx, double dy) {
+        double real = center.real + (screenX - (width / 2) + dx) / zoom;
+        double imaginary = center.imaginary + (screenY - (height / 2) + dy) / zoom;
+        return Complex.fromCartesian(real, imaginary);
+    }
+
     public Viewport withCenter(Complex newCenter) {
         return new Viewport(newCenter, zoom, width, height);
     }
@@ -80,18 +90,6 @@ public final class Viewport {
         double newCenterReal = center.real - dxPixels / zoom;
         double newCenterImaginary = center.imaginary - dyPixels / zoom;
         return new Viewport(Complex.fromCartesian(newCenterReal, newCenterImaginary), zoom, width, height);
-    }
-
-    /**
-     * Returns a Viewport covering the exact same complex-plane window, but at
-     * {@code factor}x the pixel density per axis -- used to render oversized
-     * for supersampling, then box-filter back down with Colorizer.downsample.
-     */
-    public Viewport supersampled(int factor) {
-        if (factor <= 1) {
-            return this;
-        }
-        return new Viewport(center, zoom * factor, width * factor, height * factor);
     }
 
     private static double clampZoom(double zoom) {

@@ -64,7 +64,7 @@ public final class MandelbrotCli {
             Options:
               -o, --output FILE    where to write the PNG (default: the input's name with .png)
               --size WxH           picture size in pixels (default 1920x1080)
-              --samples N          supersampling per axis: 1, 2, 3 or 4 (default 2, a 2x2 grid per pixel)
+              --samples N          supersampling per axis: 1, 2, 3, 4, 6 or 8 (default 2, a 2x2 grid per pixel)
               --bookmark NAME|N    which bookmark to use when the file holds several (a name, or 1 for the first)
               --window WxH         the window size the view's zoom refers to (default 1100x700). The picture
                                    frames the same area that window showed.
@@ -166,7 +166,7 @@ public final class MandelbrotCli {
                 case "--samples" -> {
                     samples = integer(value(args, ++i, arg), arg);
                     if (!RenderSettings.SUPERSAMPLE_FACTORS.contains(samples)) {
-                        throw new UsageException("--samples must be 1, 2, 3 or 4, not " + samples);
+                        throw new UsageException("--samples must be 1, 2, 3, 4, 6 or 8, not " + samples);
                     }
                 }
                 case "--threads" -> {
@@ -308,14 +308,14 @@ public final class MandelbrotCli {
         int threads = o.threads() != null ? o.threads() : Math.max(1, Runtime.getRuntime().availableProcessors());
         out.println("Rendering " + size[0] + "x" + size[1] + " at " + samples + "x" + samples + ", " + algorithm.toString().toLowerCase(Locale.ROOT)
                 + ", " + threads + " thread" + (threads == 1 ? "" : "s") + "...");
-        int total = Math.max(1, ImageExporter.tileCount(target, samples));
+        int total = Math.max(1, ImageExporter.tileCount(target));
         AtomicInteger done = new AtomicInteger();
         AtomicInteger reported = new AtomicInteger();
         long start = System.nanoTime();
-        BufferedImage image;
+        ImageExporter.Result result;
         ExecutorService executor = Executors.newFixedThreadPool(threads);
         try {
-            image = ImageExporter.renderImage(target, settings, palette, executor, () -> false, () -> {
+            result = ImageExporter.renderImage(target, settings, palette, executor, () -> false, () -> {
                 int percent = done.incrementAndGet() * 100 / total / 10 * 10;
                 int last = reported.get();
                 if (percent > last && reported.compareAndSet(last, percent) && percent < 100) {
@@ -325,9 +325,13 @@ public final class MandelbrotCli {
         } finally {
             executor.shutdownNow();
         }
-        write(output, image, embedded);
+        write(output, result.image(), embedded);
         long millis = (System.nanoTime() - start) / 1_000_000;
-        out.println("Wrote " + output.getPath() + " in " + String.format(Locale.ROOT, "%.1f", millis / 1000.0) + " s.");
+        String refined = samples > 1
+                ? String.format(Locale.ROOT, " (%.0f%% of pixels super-sampled)", result.refinedShare() * 100)
+                : "";
+        out.println("Wrote " + output.getPath() + " in " + String.format(Locale.ROOT, "%.1f", millis / 1000.0) + " s"
+                + refined + ".");
         return 0;
     }
 

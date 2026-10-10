@@ -47,6 +47,16 @@ public final class IterationGrid {
         nu[index] = result.nu();
     }
 
+    /** Copies cell ({@code fromX}, {@code fromY}) of {@code from} into cell ({@code x}, {@code y}) of this grid. */
+    void copyCell(IterationGrid from, int fromX, int fromY, int x, int y) {
+        int source = from.index(fromX, fromY);
+        int index = index(x, y);
+        escaped[index] = from.escaped[source];
+        iterations[index] = from.iterations[source];
+        smoothIterationCount[index] = from.smoothIterationCount[source];
+        nu[index] = from.nu[source];
+    }
+
     public boolean isEscaped(int x, int y) {
         return escaped[index(x, y)];
     }

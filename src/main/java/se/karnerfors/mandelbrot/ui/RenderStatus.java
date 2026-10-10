@@ -12,8 +12,9 @@ package se.karnerfors.mandelbrot.ui;
  * @param settleFactor  the supersample factor the view settles at (1 means the preview is the final image)
  * @param progress      fraction of tiles done in the current pass, 0..1, meaningful while rendering
  * @param millis        how long the pass that just finished took, or -1 when not applicable
+ * @param refinedShare  once settled above 1x1: the share of pixels that were super-sampled, 0..1; otherwise -1
  */
-public record RenderStatus(Stage stage, int settleFactor, double progress, long millis) {
+public record RenderStatus(Stage stage, int settleFactor, double progress, long millis, double refinedShare) {
 
     public enum Stage {
         /** Nothing has been rendered yet. */
@@ -29,7 +30,7 @@ public record RenderStatus(Stage stage, int settleFactor, double progress, long 
     }
 
     public static RenderStatus idle() {
-        return new RenderStatus(Stage.IDLE, 1, 0.0, -1);
+        return new RenderStatus(Stage.IDLE, 1, 0.0, -1, -1);
     }
 
     public boolean rendering() {

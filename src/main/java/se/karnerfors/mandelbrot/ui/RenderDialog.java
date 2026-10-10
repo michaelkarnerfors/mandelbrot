@@ -34,7 +34,9 @@ import javax.swing.event.DocumentListener;
 import se.karnerfors.mandelbrot.io.MandelbrotConfig;
 import se.karnerfors.mandelbrot.io.SessionState.ExportData;
 import se.karnerfors.mandelbrot.palette.Palette;
+import se.karnerfors.mandelbrot.render.AdaptiveSampler;
 import se.karnerfors.mandelbrot.render.ImageExporter;
+import se.karnerfors.mandelbrot.render.IterationGrid;
 import se.karnerfors.mandelbrot.render.RenderAlgorithm;
 import se.karnerfors.mandelbrot.render.RenderQueue;
 import se.karnerfors.mandelbrot.render.RenderSettings;
@@ -71,6 +73,12 @@ public final class RenderDialog {
 
         /** Seconds one sample took to draw when the view last settled, if known; for the time estimate. */
         OptionalDouble secondsPerSample();
+
+        /**
+         * The share of pixels a refinement super-samples, as the window last measured it (an estimate until it has
+         * refined once). Which pixels need it does not depend on the factor, so it holds for any choice here.
+         */
+        double refinedShare();
 
         /** The quality the window settles at, offered as the starting point the first time. */
         int settleFactor();
@@ -342,16 +350,12 @@ public final class RenderDialog {
 
         private JComponent factorSection() {
             JPanel box = section("Super-sampling");
-            JPanel row = new JPanel();
-            row.setLayout(new BoxLayout(row, BoxLayout.X_AXIS));
-            row.setOpaque(false);
-            row.setAlignmentX(Component.LEFT_ALIGNMENT);
-            row.add(factorControl);
-            row.add(Box.createHorizontalStrut(10));
-            row.add(factorNote);
-            factorControl.setAlignmentY(Component.CENTER_ALIGNMENT);
-            factorNote.setAlignmentY(Component.CENTER_ALIGNMENT);
-            box.add(row);
+            // The note goes underneath: with six steps the control leaves no room beside it.
+            factorControl.setAlignmentX(Component.LEFT_ALIGNMENT);
+            factorNote.setAlignmentX(Component.LEFT_ALIGNMENT);
+            box.add(factorControl);
+            box.add(gap(5));
+            box.add(factorNote);
             factorNote.setText(host.remembered() != null ? "Remembered from last render" : "Grid of samples behind each pixel");
             return box;
         }
@@ -669,7 +673,8 @@ public final class RenderDialog {
             StringBuilder text = new StringBuilder();
             OptionalDouble perSample = host.secondsPerSample();
             if (perSample.isPresent()) {
-                double seconds = perSample.getAsDouble() * pixels * factor() * (double) factor();
+                double samplesPerPixel = factor() == 1 ? 1 : 1 + host.refinedShare() * factor() * factor();
+                double seconds = perSample.getAsDouble() * pixels * samplesPerPixel;
                 text.append("≈ ").append(RenderQueue.formatDuration((long) (seconds * 1000))).append(" · ");
             }
             text.append("about ").append(formatBytes((long) (pixels * 1.3))).append(" file");
@@ -746,11 +751,16 @@ public final class RenderDialog {
         }
     }
 
-    /** Rough peak memory of drawing a picture: the final image (and the PNG encoder's copy) plus the tiles in flight. */
+    /**
+     * Rough peak memory of drawing a picture: the final image (and the PNG encoder's copy) plus the tiles in flight,
+     * each with its one sample per pixel and, at worst, every pixel super-sampled.
+     */
     static long memoryNeeded(int width, int height, int factor) {
         long image = (long) width * height * 4L * 2L;
-        long tile = (long) ImageExporter.EXPORT_TILE_SIZE * factor;
-        long perTile = tile * tile * 12L;
+        long tile = ImageExporter.EXPORT_TILE_SIZE;
+        long withMargin = tile + 2L * AdaptiveSampler.MARGIN;
+        long perTile = IterationGrid.estimatedBytes(withMargin, withMargin)
+                + (factor > 1 ? IterationGrid.estimatedBytes(tile * tile, (long) factor * factor) : 0);
         return image + perTile * Math.max(1, Runtime.getRuntime().availableProcessors());
     }
 

@@ -6,6 +6,7 @@ import java.awt.image.BufferedImage;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.atomic.LongAdder;
 import java.util.function.BooleanSupplier;
 
 import se.karnerfors.mandelbrot.math.Complex;
@@ -18,33 +19,40 @@ import se.karnerfors.mandelbrot.palette.Palette;
  * live on-screen fractal panel.
  *
  * <p>Unlike {@link Renderer#computeGridParallel}, which allocates one {@link
- * IterationGrid} sized to the *entire* (possibly supersampled) viewport --
- * perfectly fine at ordinary window sizes, but a problem once "ordinary window
- * size" becomes an 8K canvas at 4x4 supersampling (billions of cells, tens of
- * gigabytes) -- this class allocates only one small grid per tile, computes and
- * colorizes it, downsamples it straight into its slice of the final image, and
- * discards it. Memory stays bounded by the final image size plus a handful of
- * in-flight tile buffers, however large the requested export or supersample
- * factor.
+ * IterationGrid} for the entire viewport -- fine at window sizes, but not for a
+ * 16K picture -- this class allocates only small grids per tile (one sample per
+ * pixel and a margin, plus the extra samples of the pixels it super-samples),
+ * colours them straight into its slice of the final image, and discards them.
+ * Memory stays bounded by the final image size plus a handful of in-flight tile
+ * buffers, however large the picture or the super-sampling.
  */
 public final class ImageExporter {
 
-    /** Tile edge length, in *final* (post-downsample) pixels -- independent of the live panel's own tile size. */
+    /** Tile edge length in pixels -- independent of the live panel's own tile size. */
     public static final int EXPORT_TILE_SIZE = 128;
 
     private ImageExporter() {
     }
 
-    /** Number of tiles a render of this viewport/factor will be split into -- for progress-bar math before starting. */
-    public static int tileCount(Viewport target, int supersampleFactor) {
-        int factor = Math.max(1, supersampleFactor);
-        Viewport oversampled = target.supersampled(factor);
-        return Renderer.computeTiles(oversampled.width(), oversampled.height(), EXPORT_TILE_SIZE * factor).size();
+    /** What a render produced: the picture, and how many of its pixels were super-sampled. */
+    public record Result(BufferedImage image, long refinedPixels) {
+
+        /** The share of pixels that were super-sampled, 0 to 1. */
+        public double refinedShare() {
+            long pixels = (long) image.getWidth() * image.getHeight();
+            return pixels == 0 ? 0 : refinedPixels / (double) pixels;
+        }
+    }
+
+    /** Number of tiles a render of this viewport will be split into -- for progress-bar math before starting. */
+    public static int tileCount(Viewport target) {
+        return Renderer.computeTiles(target.width(), target.height(), EXPORT_TILE_SIZE).size();
     }
 
     /**
      * Renders {@code target} at its own resolution (not the live panel's),
-     * tile by tile, on {@code executor}. {@code isCancelled} is polled the
+     * tile by tile, on {@code executor}, super-sampling adaptively (see
+     * {@link AdaptiveSampler}). {@code isCancelled} is polled the
      * same way {@link Renderer#computeGridParallel} does, so an in-flight
      * export can be abandoned early. {@code onTileComplete}, when non-null,
      * fires once per tile (completed, skipped, or failed alike) on whichever
@@ -54,14 +62,15 @@ public final class ImageExporter {
      * <p>Blocks the calling thread until every tile has either completed or
      * been skipped as cancelled, so call this from a background thread.
      */
-    public static BufferedImage renderImage(Viewport target, RenderSettings settings, Palette palette,
+    public static Result renderImage(Viewport target, RenderSettings settings, Palette palette,
             ExecutorService executor, BooleanSupplier isCancelled, Runnable onTileComplete) throws InterruptedException {
 
         int factor = Math.max(1, settings.supersampleFactor());
-        int oversampledTileSize = EXPORT_TILE_SIZE * factor;
-        Viewport oversampled = target.supersampled(factor);
-        List<Rectangle> tiles = Renderer.computeTiles(oversampled.width(), oversampled.height(), oversampledTileSize);
+        int threshold = AdaptiveSampler.threshold();
+        List<Rectangle> tiles = Renderer.computeTiles(target.width(), target.height(), EXPORT_TILE_SIZE);
+        Rectangle bounds = new Rectangle(0, 0, target.width(), target.height());
         BufferedImage finalImage = new BufferedImage(target.width(), target.height(), BufferedImage.TYPE_INT_ARGB);
+        LongAdder refinedPixels = new LongAdder();
         CountDownLatch latch = new CountDownLatch(tiles.size());
 
         for (Rectangle tile : tiles) {
@@ -70,24 +79,36 @@ public final class ImageExporter {
                     if (isCancelled.getAsBoolean()) {
                         return;
                     }
-                    // A grid sized to just this tile -- never the whole (possibly huge) oversampled image.
-                    IterationGrid tileGrid = new IterationGrid(tile.width, tile.height);
-                    for (int lx = 0; lx < tile.width; lx++) {
-                        for (int ly = 0; ly < tile.height; ly++) {
-                            Complex c = oversampled.toComplex(tile.x + lx, tile.y + ly);
-                            tileGrid.set(lx, ly, settings.algorithm().compute(c, settings));
+                    // One sample per pixel for the tile and a margin around it (the mask looks at neighbours);
+                    // a grid sized to just this, never the whole (possibly huge) picture.
+                    int margin = factor > 1 ? AdaptiveSampler.MARGIN : 0;
+                    Rectangle area = new Rectangle(tile.x - margin, tile.y - margin, tile.width + 2 * margin,
+                            tile.height + 2 * margin).intersection(bounds);
+                    IterationGrid base = new IterationGrid(area.width, area.height);
+                    for (int lx = 0; lx < area.width; lx++) {
+                        for (int ly = 0; ly < area.height; ly++) {
+                            Complex c = target.toComplex(area.x + lx, area.y + ly);
+                            base.set(lx, ly, settings.algorithm().compute(c, settings));
                         }
+                    }
+                    Rectangle region = new Rectangle(tile.x - area.x, tile.y - area.y, tile.width, tile.height);
+                    AdaptiveSampler.Refinement refinement = null;
+                    if (factor > 1) {
+                        boolean[] mask = AdaptiveSampler.mask(base, palette, region, threshold);
+                        refinement = AdaptiveSampler.refine(target, area.x, area.y, base, region, mask, factor, settings,
+                                null, isCancelled);
+                        if (refinement == null) {
+                            return; // cancelled
+                        }
+                        refinedPixels.add(refinement.count());
                     }
                     if (isCancelled.getAsBoolean()) {
                         return;
                     }
-                    BufferedImage tileOversampled = Colorizer.colorize(tileGrid, palette);
-                    BufferedImage tileFinal = Colorizer.downsample(tileOversampled, factor);
-                    int finalX = tile.x / factor;
-                    int finalY = tile.y / factor;
+                    BufferedImage tileFinal = AdaptiveSampler.colorize(base, region, refinement, palette);
                     synchronized (finalImage) {
                         Graphics2D g = finalImage.createGraphics();
-                        g.drawImage(tileFinal, finalX, finalY, null);
+                        g.drawImage(tileFinal, tile.x, tile.y, null);
                         g.dispose();
                     }
                 } finally {
@@ -100,6 +121,6 @@ public final class ImageExporter {
         }
 
         latch.await();
-        return finalImage;
+        return new Result(finalImage, refinedPixels.sum());
     }
 }

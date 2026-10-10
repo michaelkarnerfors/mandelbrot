@@ -20,9 +20,15 @@ Zoom is limited to roughly 0.01 to 10¹³. The maths is plain double precision, 
 
 ## Quality: super-sampling
 
-Moving always draws a quick 1×1 preview (one sample per pixel). When you stop, the same view refines on its own at the quality chosen in **Super-sampling**: 1×1, 2×2, 3×3 or 4×4, the grid of samples averaged into each pixel, so 3×3 is 9 samples and 4×4 is 16. Moving again cancels the refinement and starts over from a preview. The status bar shows both steps ("Preview → Refining 3×3", then "Settled at 3×3").
+Moving always draws a quick 1×1 preview (one sample per pixel). When you stop, the same view refines on its own at the quality chosen in **Super-sampling**: 1×1, 2×2, 3×3, 4×4, 6×6 or 8×8, the grid of samples averaged into each pixel, so 3×3 is 9 samples and 8×8 is 64. Moving again cancels the refinement and starts over from a preview. The status bar shows both steps ("Preview → Refining 3×3", then "Settled at 3×3").
 
-Higher settings look smoother and take longer: the work grows with the number of samples, so 4×4 costs 16 times as much as 1×1. On a very large window (a full 4K screen, say) 4×4 can need over 1 GB of Java heap; a warning appears next to the control, and if memory runs out the preview stays on screen. Start Java with a larger `-Xmx` to go higher.
+The refinement is adaptive: only pixels whose colour differs noticeably from a neighbour's get the extra samples (edges, filaments, tight bands of colour). Smooth areas keep their single sample, because more samples would average to the same colour anyway. Typically 5 to 60% of the pixels are refined, depending on how busy the view is; hover over the status chip once the view has settled to see the share. The picture is practically identical to sampling every pixel, at a fraction of the time.
+
+Higher settings look smoother and take longer: each refined pixel costs as many samples as the grid has, so 8×8 costs about four times as much as 4×4. The difference is clearest in busy areas. Changing the setting on a view that is already drawn just refines it again, without a new preview; going back to 1×1 is instant.
+
+Changing the palette recolours the view from the samples it already has, then refines any pixels the new palette needs that the old one did not (a palette that cycles faster shows more edges). While you edit a palette, the view shows one sample per pixel and returns to full quality when you apply it.
+
+The window keeps every sample so palette changes are quick, which costs memory on busy views at high settings: 8×8 on a large window can need over 1 GB of Java heap. A warning appears next to the control when the chosen setting would take a large share of the heap, and if memory runs out the preview stays on screen. Start Java with a larger `-Xmx` to go higher.
 
 ## Palettes
 
@@ -74,7 +80,7 @@ Choosing Mandelbrot in the fractal control (or opening a Mandelbrot bookmark) cl
 
 In the dialog you choose:
 - the **size**: window size and multiples of it, or presets from 1024 px wide up to 8K in 4:3, 16:9 and 21:9;
-- the **quality** (the grid of samples behind each pixel, 1×1 to 4×4);
+- the **quality** (the grid of samples behind each pixel, 1×1 to 8×8);
 - the **location**: Re, Im and zoom, prefilled from the view and editable;
 - the **file** and folder.
 
@@ -82,7 +88,7 @@ In the dialog you choose:
 
 When you add the job, the view, palette and settings are frozen, and the picture frames the same area as the window. Jobs are drawn one at a time at low priority, so the live view stays usable. Rendering to a file that already exists asks before replacing it.
 
-The queue chip in the status bar summarises the queue and opens it: progress and time left, cancel or remove, and for finished pictures **Open** and **Show in folder**. A failed job (out of memory at 4×4, say) offers a lighter retry. Memory use is bounded by the output image size, not by the supersampled size.
+The queue chip in the status bar summarises the queue and opens it: progress and time left, cancel or remove, and for finished pictures **Open** and **Show in folder**. A failed job (out of memory at 8×8, say) offers a lighter retry. Pictures are super-sampled adaptively like the window, and memory use is bounded by the output image size, not by the number of samples.
 
 Pictures go to `~/mandelbrot/renders` unless you choose another folder. Jobs are kept in memory only: quitting asks first if any are unfinished.
 
@@ -106,7 +112,7 @@ Without arguments the jar opens the window instead. JVM options such as `-Xmx` g
 |---|---|
 | `-o`, `--output FILE` | Where to write the PNG. Default: the input's name with `.png`. Never overwrites the input. |
 | `--size WxH` | Picture size, up to 16384 per side. Default 1920x1080. |
-| `--samples N` | Supersampling per axis: 1, 2, 3 or 4 (a 3x3 grid is 9 samples per pixel). Default 2. |
+| `--samples N` | Supersampling per axis: 1, 2, 3, 4, 6 or 8 (a 3x3 grid is 9 samples per pixel). Default 2. |
 | `--window WxH` | The window size the view's zoom refers to. Default 1100x700, the app's default canvas. The picture frames the same area as that window, like the Render dialog. |
 | `--fractal`, `--c` | Override the fractal (`mandelbrot` or `julia`) and the Julia constant (`-0.8,0.156` or `-0.8+0.156i`). |
 | `--re`, `--im`, `--zoom` | Override the centre and zoom of the view. |

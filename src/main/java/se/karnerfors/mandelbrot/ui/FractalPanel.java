@@ -18,12 +18,17 @@ import java.awt.event.MouseMotionAdapter;
 import java.awt.image.BufferedImage;
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.List;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
+import java.util.function.IntConsumer;
 
 import javax.swing.JPanel;
 import javax.swing.SwingUtilities;
@@ -34,6 +39,7 @@ import se.karnerfors.mandelbrot.math.Complex;
 import se.karnerfors.mandelbrot.math.Viewport;
 import se.karnerfors.mandelbrot.io.MandelbrotConfig;
 import se.karnerfors.mandelbrot.palette.Palette;
+import se.karnerfors.mandelbrot.render.AdaptiveSampler;
 import se.karnerfors.mandelbrot.render.Colorizer;
 import se.karnerfors.mandelbrot.render.IterationGrid;
 import se.karnerfors.mandelbrot.render.RenderAlgorithm;
@@ -68,8 +74,8 @@ public final class FractalPanel extends JPanel {
     private static final int RESIZE_DEBOUNCE_MS = 150;
     private static final double WHEEL_ZOOM_STEP = 1.3;
 
-    /** Tile edge length in *final* (display) pixels; multiplied by the supersample factor for the actual grid tiling. */
-    private static final int TILE_SIZE_FINAL_PIXELS = 24;
+    /** Tile edge length in pixels, for both the preview and the refinement. */
+    private static final int TILE_SIZE = 24;
 
     private enum Mode { NONE, SELECT, PAN, TRACK }
 
@@ -82,8 +88,17 @@ public final class FractalPanel extends JPanel {
     private Viewport inProgressViewport;
     private BufferedImage progressiveImage;
 
+    /**
+     * The committed view's samples: one per pixel (the preview's), plus the extra samples of the pixels the
+     * refinement super-sampled, one {@link AdaptiveSampler.Refinement} per tile of {@link #lastTiles}. Without a
+     * refinement {@code lastRefinements} is null and the factor is 1.
+     */
     private IterationGrid lastGrid;
+    private List<Rectangle> lastTiles;
+    private AdaptiveSampler.Refinement[] lastRefinements;
     private int lastSupersampleFactor = 1;
+    /** The share of pixels the committed view's refinement super-sampled, or -1 without a refinement. */
+    private double lastRefinedShare = -1;
     private long lastSettledMillis = -1;
 
     /** Bumped on every palette change so a slow recolour that finishes late cannot overwrite a newer one. */
@@ -104,8 +119,9 @@ public final class FractalPanel extends JPanel {
     private final Deque<Viewport> history = new ArrayDeque<>();
 
     private final ExecutorService executor = newRenderExecutor();
-    private int totalTiles;
-    private int completedTiles;
+    /** Progress of the pass in flight: tiles for the preview, samples to compute for the refinement. */
+    private long totalWork;
+    private long completedWork;
     private long renderStartNanos;
 
     private Mode mode = Mode.NONE;
@@ -354,6 +370,16 @@ public final class FractalPanel extends JPanel {
     public void setPalette(Palette newPalette, Runnable onComplete) {
         this.palette = newPalette;
         paletteListener.accept(newPalette);
+        recolour(onComplete);
+    }
+
+    /**
+     * Recolours the committed view with the current palette from its stored samples, in the background. A
+     * refined view is then topped up: the new palette may want pixels refined that the old one did not (faster
+     * cycling, more contrast), and only those are sampled.
+     */
+    private void recolour(Runnable onComplete) {
+        final Palette newPalette = palette;
         this.liveRecolourWanted = false;
         final long mySeq = ++paletteSeq;
         if (lastGrid == null) {
@@ -364,21 +390,23 @@ public final class FractalPanel extends JPanel {
         }
 
         final IterationGrid gridSnapshot = lastGrid;
-        final int factorSnapshot = lastSupersampleFactor;
+        final List<Rectangle> tilesSnapshot = lastTiles;
+        final AdaptiveSampler.Refinement[] refinementsSnapshot = lastRefinements;
         final long myGeneration = renderGeneration;
 
         SwingWorker<BufferedImage, Void> worker = new SwingWorker<>() {
             @Override
             protected BufferedImage doInBackground() {
-                BufferedImage colorized = Colorizer.colorize(gridSnapshot, newPalette);
-                return Colorizer.downsample(colorized, factorSnapshot);
+                return colorizeAll(gridSnapshot, tilesSnapshot, refinementsSnapshot, newPalette);
             }
 
             @Override
             protected void done() {
+                boolean landed = false;
                 if (myGeneration == renderGeneration && mySeq == paletteSeq) {
                     try {
                         renderedImage = get();
+                        landed = true;
                         repaint();
                     } catch (Exception ex) {
                         ex.printStackTrace();
@@ -387,6 +415,10 @@ public final class FractalPanel extends JPanel {
                 if (onComplete != null) {
                     onComplete.run();
                 }
+                if (landed && runningPass == null && lastRefinements != null && lastSupersampleFactor == settleFactor()) {
+                    pendingRefine = true;
+                    tryStartRefine();
+                }
             }
         };
         worker.execute();
@@ -394,7 +426,7 @@ public final class FractalPanel extends JPanel {
 
     /**
      * Shows {@code newPalette} right away while it is being edited: the drawn view is recoloured from the
-     * cached iteration data with one sample per pixel (quick, but without the supersampling average).
+     * preview's samples, one per pixel (quick, but without the super-sampling average).
      * New renders already use this palette. Follow up with {@link #setPalette(Palette, Runnable)} to get
      * full quality, or with it again using the old palette to revert.
      */
@@ -412,14 +444,13 @@ public final class FractalPanel extends JPanel {
         }
         liveRecolourRunning = true;
         final IterationGrid grid = lastGrid;
-        final int factor = lastSupersampleFactor;
         final Palette live = palette;
         final long generation = renderGeneration;
         final long seq = paletteSeq;
         new SwingWorker<BufferedImage, Void>() {
             @Override
             protected BufferedImage doInBackground() {
-                return Colorizer.colorizeSampled(grid, live, factor);
+                return Colorizer.colorize(grid, live);
             }
 
             @Override
@@ -497,18 +528,27 @@ public final class FractalPanel extends JPanel {
     }
 
     /**
-     * Changing only the settle factor does not redo the preview: if the view on screen is already drawn,
-     * it is simply refined (or left alone if it is already at that quality). Anything else re-renders.
+     * Changing only the super-sampling does not redo the preview: if the view on screen is already drawn,
+     * it is simply refined (back at 1x1 it just drops the refinement, or it is left alone if it is already at
+     * that quality). Anything else re-renders.
      */
     public void setRenderSettings(RenderSettings newSettings) {
         RenderSettings old = this.renderSettings;
         this.renderSettings = newSettings;
         int settle = settleFactor();
         boolean onlySettleChanged = old.withSupersampleFactor(newSettings.supersampleFactor()).equals(newSettings);
-        if (onlySettleChanged && settle > 1 && lastGrid != null && committedViewport == currentViewport) {
+        if (onlySettleChanged && lastGrid != null && committedViewport == currentViewport) {
             pendingRefine = false;
             if (lastSupersampleFactor == settle && inProgressViewport == null) {
                 reportStatus(RenderStatus.Stage.SETTLED, settle, 1.0, lastSettledMillis);
+            } else if (settle == 1) {
+                stopRefinement();
+                pendingRefine = false;
+                lastRefinements = null;
+                lastSupersampleFactor = 1;
+                lastRefinedShare = -1;
+                recolour(null);
+                reportStatus(RenderStatus.Stage.SETTLED, 1, 1.0, -1);
             } else {
                 startPass(Pass.REFINE);
             }
@@ -702,7 +742,7 @@ public final class FractalPanel extends JPanel {
                 && !wheelRenderTimer.isRunning() && !resizeRenderTimer.isRunning();
     }
 
-    /** Starts the refinement if a preview is waiting for one and the view has come to rest. */
+    /** Starts the refinement if a preview (or a recoloured view, for its top-up) is waiting for one and the view has come to rest. */
     private void tryStartRefine() {
         if (pendingRefine && !refinementHeld && isViewSteady(committedViewport)) {
             pendingRefine = false;
@@ -710,36 +750,53 @@ public final class FractalPanel extends JPanel {
         }
     }
 
+    /** What a pass leaves behind: the view's samples, and the refinement per tile (null for the preview). */
+    private record PassResult(IterationGrid grid, AdaptiveSampler.Refinement[] refinements) {
+    }
+
     private void startPass(Pass pass) {
         final Viewport target = currentViewport;
+        // The refinement builds on the preview's samples of this very view; without them, draw the preview first.
+        if (pass == Pass.REFINE && (lastGrid == null || committedViewport != target)) {
+            submitRender();
+            return;
+        }
         final Palette activePalette = palette;
         final RenderSettings settings = renderSettings;
         final int settle = settleFactor();
-        final int factor = pass == Pass.PREVIEW ? 1 : settle;
         final RenderStatus.Stage stage = pass == Pass.PREVIEW ? RenderStatus.Stage.PREVIEW : RenderStatus.Stage.REFINING;
-        final int oversampledTileSize = TILE_SIZE_FINAL_PIXELS * factor;
+        final List<Rectangle> tiles = Renderer.computeTiles(target.width(), target.height(), TILE_SIZE);
+        final IterationGrid base = pass == Pass.REFINE ? lastGrid : null;
+        // What an earlier refinement at this factor already sampled is kept (a top-up after a palette change).
+        final AdaptiveSampler.Refinement[] existing =
+                pass == Pass.REFINE && lastSupersampleFactor == settle ? lastRefinements : null;
         final long myGeneration = ++renderGeneration;
         runningPass = pass;
 
         final BufferedImage myProgressiveImage = new BufferedImage(target.width(), target.height(), BufferedImage.TYPE_INT_ARGB);
         this.inProgressViewport = target;
         this.progressiveImage = myProgressiveImage;
-        this.totalTiles = tileCount(target.width(), target.height(), TILE_SIZE_FINAL_PIXELS);
-        this.completedTiles = 0;
+        this.totalWork = pass == Pass.PREVIEW ? tiles.size() : 0;
+        this.completedWork = 0;
         this.renderStartNanos = System.nanoTime();
         reportStatus(stage, settle, 0.0, -1);
 
-        SwingWorker<IterationGrid, Void> worker = new SwingWorker<>() {
+        SwingWorker<PassResult, Void> worker = new SwingWorker<>() {
             @Override
-            protected IterationGrid doInBackground() throws Exception {
+            protected PassResult doInBackground() throws Exception {
                 if (myGeneration != renderGeneration) {
                     return null; // superseded before it started: don't even allocate the grid
                 }
-                Viewport oversampled = target.supersampled(factor);
-                return Renderer.computeGridParallel(oversampled, settings, executor, oversampledTileSize,
+                if (pass == Pass.REFINE) {
+                    AdaptiveSampler.Refinement[] refinements = refineTiles(myGeneration, target, base, tiles, existing,
+                            settle, settings, activePalette, myProgressiveImage, stage, settle);
+                    return refinements == null ? null : new PassResult(base, refinements);
+                }
+                IterationGrid grid = Renderer.computeGridParallel(target, settings, executor, TILE_SIZE,
                         () -> myGeneration != renderGeneration,
-                        (grid, tile) -> onTileComplete(myGeneration, myProgressiveImage, activePalette, factor, stage,
-                                settle, grid, tile));
+                        (g, tile) -> paintTile(myGeneration, myProgressiveImage, Colorizer.colorizeRegion(g, activePalette, tile),
+                                tile, 1, stage, settle));
+                return new PassResult(grid, null);
             }
 
             @Override
@@ -750,10 +807,20 @@ public final class FractalPanel extends JPanel {
                 runningPass = null;
                 long elapsedMillis = (System.nanoTime() - renderStartNanos) / 1_000_000;
                 try {
-                    IterationGrid grid = get();
-                    lastGrid = grid;
-                    lastSupersampleFactor = factor;
-                    renderedImage = myProgressiveImage;
+                    PassResult result = get();
+                    if (result == null) {
+                        return;
+                    }
+                    lastGrid = result.grid();
+                    lastTiles = tiles;
+                    lastRefinements = result.refinements();
+                    lastSupersampleFactor = result.refinements() == null ? 1 : settle;
+                    lastRefinedShare = refinedShare(result.refinements(), target);
+                    // A top-up that found nothing new to sample painted nothing: what is on screen is already right.
+                    boolean unchanged = existing != null && result.refinements() == existing;
+                    if (!unchanged) {
+                        renderedImage = myProgressiveImage;
+                    }
                     committedViewport = target;
                     inProgressViewport = null;
                     progressiveImage = null;
@@ -780,8 +847,10 @@ public final class FractalPanel extends JPanel {
                     repaint();
                     tryStartRefine();
                 } else {
-                    lastSettledMillis = elapsedMillis;
-                    reportStatus(RenderStatus.Stage.SETTLED, factor, 1.0, elapsedMillis);
+                    // A top-up adds to the time the view took to draw rather than replacing it.
+                    lastSettledMillis = existing != null && lastSettledMillis >= 0 ? lastSettledMillis + elapsedMillis
+                            : elapsedMillis;
+                    reportStatus(RenderStatus.Stage.SETTLED, lastSupersampleFactor, 1.0, lastSettledMillis);
                     repaint();
                     if (palette != activePalette) {
                         setPalette(palette); // the palette changed while this was drawing: recolour the fresh grid
@@ -793,44 +862,146 @@ public final class FractalPanel extends JPanel {
     }
 
     /**
-     * Runs on a render-worker thread once one tile's grid cells are filled.
-     * Colorizing and downsampling a single small tile is cheap and pure, so
-     * it happens right here; only the resulting handful of pixels get
-     * composited into {@code myProgressiveImage} (this specific render's own
-     * buffer, captured as a local by the caller -- never the field, which a
-     * newer render may have already replaced by the time a late tile from
-     * this one lands), via invokeLater, keeping every Swing-state mutation
-     * on the EDT.
+     * The refinement pass, on a background thread: finds the pixels each tile should super-sample (see
+     * {@link AdaptiveSampler}), then samples and paints the tiles on the render pool. Progress counts the samples
+     * still to compute, so tiles with nothing to refine do not make it jump. Returns null when superseded.
      */
-    private void onTileComplete(long myGeneration, BufferedImage myProgressiveImage, Palette activePalette, int factor,
-            RenderStatus.Stage stage, int settle, IterationGrid grid, Rectangle oversampledTile) {
-        BufferedImage tileOversampled = Colorizer.colorizeRegion(grid, activePalette, oversampledTile);
-        BufferedImage tileFinal = Colorizer.downsample(tileOversampled, factor);
-        int finalX = oversampledTile.x / factor;
-        int finalY = oversampledTile.y / factor;
+    private AdaptiveSampler.Refinement[] refineTiles(long myGeneration, Viewport target, IterationGrid base,
+            List<Rectangle> tiles, AdaptiveSampler.Refinement[] existing, int factor, RenderSettings settings,
+            Palette activePalette, BufferedImage myProgressiveImage, RenderStatus.Stage stage, int settle)
+            throws InterruptedException {
+        BooleanSupplier isCancelled = () -> myGeneration != renderGeneration;
+        int threshold = AdaptiveSampler.threshold();
+        int count = tiles.size();
+        boolean[][] masks = new boolean[count][];
+        long[] work = new long[count];
+        forEachTile(count, myGeneration, i -> {
+            masks[i] = AdaptiveSampler.mask(base, activePalette, tiles.get(i), threshold);
+            long fresh = 0;
+            for (int k = 0; k < masks[i].length; k++) {
+                if (masks[i][k] && (existing == null || !existing[i].contains(k))) {
+                    fresh++;
+                }
+            }
+            work[i] = 1 + fresh;
+        });
+        if (isCancelled.getAsBoolean()) {
+            return null;
+        }
+        long total = 0;
+        for (long w : work) {
+            total += w;
+        }
+        if (existing != null && total == count) {
+            return existing; // a top-up with nothing new to sample: leave the view as it is
+        }
+        long totalSamples = total;
+        // Queued before any tile's paint, so the progress total is in place when the first tile lands.
+        SwingUtilities.invokeLater(() -> {
+            if (myGeneration == renderGeneration) {
+                totalWork = totalSamples;
+            }
+        });
 
+        AdaptiveSampler.Refinement[] result = new AdaptiveSampler.Refinement[count];
+        forEachTile(count, myGeneration, i -> {
+            Rectangle tile = tiles.get(i);
+            AdaptiveSampler.Refinement refinement = AdaptiveSampler.refine(target, 0, 0, base, tile, masks[i], factor,
+                    settings, existing == null ? null : existing[i], isCancelled);
+            if (refinement != null) {
+                result[i] = refinement;
+                paintTile(myGeneration, myProgressiveImage, AdaptiveSampler.colorize(base, tile, refinement, activePalette),
+                        tile, work[i], stage, settle);
+            }
+        });
+        return isCancelled.getAsBoolean() ? null : result;
+    }
+
+    /**
+     * Runs {@code task} for every tile index on the render pool and waits for them all; tiles still queued when
+     * the render is superseded are skipped. A failure in a tile (out of memory, say) is rethrown here.
+     */
+    private void forEachTile(int count, long myGeneration, IntConsumer task) throws InterruptedException {
+        CountDownLatch latch = new CountDownLatch(count);
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        for (int i = 0; i < count; i++) {
+            int index = i;
+            executor.execute(() -> {
+                try {
+                    if (myGeneration == renderGeneration && failure.get() == null) {
+                        task.accept(index);
+                    }
+                } catch (Throwable t) {
+                    failure.compareAndSet(null, t);
+                } finally {
+                    latch.countDown();
+                }
+            });
+        }
+        latch.await();
+        Throwable t = failure.get();
+        if (t instanceof Error e) {
+            throw e;
+        }
+        if (t instanceof RuntimeException e) {
+            throw e;
+        }
+    }
+
+    /**
+     * Composites one finished tile into {@code myProgressiveImage} (this specific render's own buffer, captured
+     * by the caller -- never the field, which a newer render may already have replaced by the time a late tile
+     * lands), via invokeLater, keeping every Swing-state mutation on the EDT. {@code work} is the tile's share of
+     * the pass's progress.
+     */
+    private void paintTile(long myGeneration, BufferedImage myProgressiveImage, BufferedImage tileImage, Rectangle tile,
+            long work, RenderStatus.Stage stage, int settle) {
         SwingUtilities.invokeLater(() -> {
             if (myGeneration != renderGeneration) {
                 return; // superseded; drop this tile's result
             }
             Graphics2D g = myProgressiveImage.createGraphics();
             g.setComposite(java.awt.AlphaComposite.Src);
-            g.drawImage(tileFinal, finalX, finalY, null);
+            g.drawImage(tileImage, tile.x, tile.y, null);
             g.dispose();
-            completedTiles++;
-            reportStatus(stage, settle, totalTiles == 0 ? 1.0 : (double) completedTiles / totalTiles, -1);
-            repaint(finalX, finalY, tileFinal.getWidth(), tileFinal.getHeight());
+            completedWork += work;
+            reportStatus(stage, settle, totalWork == 0 ? 0.0 : Math.min(1.0, (double) completedWork / totalWork), -1);
+            repaint(tile.x, tile.y, tile.width, tile.height);
         });
     }
 
-    private void reportStatus(RenderStatus.Stage stage, int settle, double progress, long millis) {
-        renderStatusListener.accept(new RenderStatus(stage, settle, progress, millis));
+    /** The share of the view's pixels that {@code refinements} super-sample, or -1 when there are none. */
+    private static double refinedShare(AdaptiveSampler.Refinement[] refinements, Viewport view) {
+        if (refinements == null) {
+            return -1;
+        }
+        long refined = 0;
+        for (AdaptiveSampler.Refinement refinement : refinements) {
+            refined += refinement.count();
+        }
+        long pixels = (long) view.width() * view.height();
+        return pixels == 0 ? 0 : refined / (double) pixels;
     }
 
-    private static int tileCount(int width, int height, int tileSize) {
-        int cols = (width + tileSize - 1) / tileSize;
-        int rows = (height + tileSize - 1) / tileSize;
-        return cols * rows;
+    /** The whole view in {@code palette}: refined pixels average their samples, the rest use the preview's. */
+    private static BufferedImage colorizeAll(IterationGrid grid, List<Rectangle> tiles,
+            AdaptiveSampler.Refinement[] refinements, Palette palette) {
+        if (refinements == null) {
+            return Colorizer.colorize(grid, palette);
+        }
+        BufferedImage image = new BufferedImage(grid.width(), grid.height(), BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = image.createGraphics();
+        for (int i = 0; i < tiles.size(); i++) {
+            Rectangle tile = tiles.get(i);
+            g.drawImage(AdaptiveSampler.colorize(grid, tile, refinements[i], palette), tile.x, tile.y, null);
+        }
+        g.dispose();
+        return image;
+    }
+
+    private void reportStatus(RenderStatus.Stage stage, int settle, double progress, long millis) {
+        double share = stage == RenderStatus.Stage.SETTLED ? lastRefinedShare : -1;
+        renderStatusListener.accept(new RenderStatus(stage, settle, progress, millis, share));
     }
 
     /** The viewport we should visually represent right now, including any in-progress pan. */

@@ -57,6 +57,8 @@ public class MandelbrotApp {
 
     private static final int MIN_WIDTH = 900;
     private static final int MIN_HEIGHT = 560;
+    /** Until the window has refined a view, assume this share of pixels gets super-sampled (busy views: 30-60%). */
+    private static final double ASSUMED_REFINED_SHARE = 0.5;
 
     public static void main(String[] args) {
         SwingUtilities.invokeLater(MandelbrotApp::createAndShowGui);
@@ -115,12 +117,17 @@ public class MandelbrotApp {
         };
         updatePaletteLabel.run();
 
-        // Warn next to the settle control when the chosen quality would take a large share of the Java heap.
+        // The share of pixels the last refinement super-sampled, for the memory note and the Render dialog's estimate.
+        double[] refinedShare = { ASSUMED_REFINED_SHARE };
+        // Warn next to the super-sampling control when the chosen quality would take a large share of the Java heap:
+        // one sample per pixel, plus the full grid of samples for the pixels that get refined.
         Runnable updateMemoryNote = () -> {
             int factor = fractalPanel.getRenderSettings().supersampleFactor();
-            long cells = (long) fractalPanel.getWidth() * factor;
-            topBar.setMemoryEstimate(IterationGrid.estimatedBytes(cells, (long) fractalPanel.getHeight() * factor),
-                    Runtime.getRuntime().maxMemory());
+            long pixels = (long) fractalPanel.getWidth() * fractalPanel.getHeight();
+            long refined = factor > 1
+                    ? (long) (IterationGrid.estimatedBytes(pixels, (long) factor * factor) * refinedShare[0])
+                    : 0;
+            topBar.setMemoryEstimate(IterationGrid.estimatedBytes(pixels, 1) + refined, Runtime.getRuntime().maxMemory());
         };
         topBar.supersample.setChangeListener(factor -> {
             fractalPanel.setRenderSettings(fractalPanel.getRenderSettings().withSupersampleFactor(factor));
@@ -379,6 +386,9 @@ public class MandelbrotApp {
         }));
         fractalPanel.setRenderStatusListener(status -> SwingUtilities.invokeLater(() -> {
             latestStatus.set(status);
+            if (status.stage() == RenderStatus.Stage.SETTLED && status.refinedShare() >= 0) {
+                refinedShare[0] = status.refinedShare();
+            }
             refreshStatus.run();
         }));
         // The hint in the status bar follows the pane under the pointer: the Mandelbrot picker is used differently.
@@ -523,8 +533,15 @@ public class MandelbrotApp {
                 if (status.stage() != RenderStatus.Stage.SETTLED || status.millis() <= 0 || pixels <= 0) {
                     return OptionalDouble.empty();
                 }
-                double samples = (double) pixels * status.settleFactor() * status.settleFactor();
-                return OptionalDouble.of(status.millis() / 1000.0 / samples);
+                // The settled time is the preview's at 1x1, otherwise the refinement's, which sampled only some pixels.
+                int factor = status.settleFactor();
+                double samples = factor == 1 ? pixels : pixels * Math.max(0, status.refinedShare()) * factor * factor;
+                return samples > 0 ? OptionalDouble.of(status.millis() / 1000.0 / samples) : OptionalDouble.empty();
+            }
+
+            @Override
+            public double refinedShare() {
+                return refinedShare[0];
             }
 
             @Override

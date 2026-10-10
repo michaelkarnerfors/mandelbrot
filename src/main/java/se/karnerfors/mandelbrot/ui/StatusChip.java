@@ -82,6 +82,10 @@ public final class StatusChip extends JComponent implements Accessible {
             case REFINING -> "Refining this view at " + label(status) + ". Moving again restarts from a 1×1 preview.";
             case FAILED -> "Not enough memory for " + label(status)
                     + " at this window size. The 1×1 preview is kept. Pick a lower factor, or start Java with a larger -Xmx.";
+            case SETTLED -> status.settleFactor() > 1 && status.refinedShare() >= 0
+                    ? share(status.refinedShare()) + " of the pixels were super-sampled at " + label(status)
+                            + "; the rest are smooth enough for one sample each."
+                    : null;
             default -> null;
         };
     }
@@ -240,6 +244,10 @@ public final class StatusChip extends JComponent implements Accessible {
                 g2.draw(new Ellipse2D.Double(x + (INDICATOR - 8) / 2.0 + 0.75, cy - 4 + 0.75, 6.5, 6.5));
             }
         }
+    }
+
+    private static String share(double share) {
+        return share > 0 && share < 0.01 ? "Under 1%" : String.format(Locale.ROOT, "%.0f%%", share * 100);
     }
 
     private static String label(RenderStatus status) {

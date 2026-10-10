@@ -7,7 +7,7 @@ An interactive Mandelbrot and Julia set explorer written in Java (Swing): multit
 ## What's in it
 
 - **Fast navigation**: drag to zoom, right-drag to pan, wheel to zoom, Home, Back and an exact **Go to…**.
-- **Super-sampling**: a quick 1×1 preview while you move, then it refines on its own once you stop, at 1×1, 2×2, 3×3 or 4×4 samples per pixel.
+- **Adaptive super-sampling**: a quick 1×1 preview while you move, then it refines on its own once you stop, at up to 8×8 samples per pixel, spent only on the pixels that need them.
 - **Palettes**: built-in and your own, with a live editor that recolours the view as you change it.
 - **Bookmarks**: a thumbnail grid of saved places, with export and import.
 - **Julia sets**: a constant chip with presets, and a **split view** where the pointer on the Mandelbrot set chooses c for the Julia set next to it.
