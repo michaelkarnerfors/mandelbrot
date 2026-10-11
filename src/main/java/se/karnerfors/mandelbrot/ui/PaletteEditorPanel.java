@@ -70,12 +70,15 @@ public final class PaletteEditorPanel extends JPanel {
     private final transient Host host;
     private final List<Color> stops = new ArrayList<>();
     private int shades;
+    /** How far the colours are moved along the gradient, in entries; wraps at one cycle (stops times shades). */
+    private int shift;
     private transient Palette baseline;
 
     private final StripPreview strip = new StripPreview();
     private final JPanel rows = new JPanel();
     private final JScrollPane rowsScroll;
     private final ThemedLabel status = new ThemedLabel("", Token.MUTED, () -> Theme.sansMedium(12f));
+    private final ThemedLabel shiftValue = new ThemedLabel("", Token.MUTED, () -> Theme.mono(11.5f));
     private final ThemedLabel shadesValue = new ThemedLabel("", Token.TEXT, () -> Theme.monoMedium(13f));
     private final AppButton apply = new AppButton("Apply", null, AppButton.Style.PRIMARY, false);
     private final AppButton revert = new AppButton("Revert", null, AppButton.Style.OUTLINE, true);
@@ -89,6 +92,7 @@ public final class PaletteEditorPanel extends JPanel {
         this.baseline = initial;
         Collections.addAll(stops, initial.stops());
         this.shades = initial.shadesPerSegment();
+        this.shift = initial.shift();
 
         setLayout(new BorderLayout(0, 0));
         setBorder(new EmptyBorder(12, 16, 0, 16));
@@ -98,10 +102,41 @@ public final class PaletteEditorPanel extends JPanel {
         top.setOpaque(false);
         top.setLayout(new BoxLayout(top, BoxLayout.Y_AXIS));
         strip.setAlignmentX(Component.LEFT_ALIGNMENT);
-        status.setAlignmentX(Component.LEFT_ALIGNMENT);
-        status.setBorder(new EmptyBorder(6, 0, 8, 0));
-        top.add(strip);
-        top.add(status);
+        strip.setShiftHandler(new StripPreview.ShiftHandler() {
+            private int startShift;
+
+            @Override
+            public void started() {
+                startShift = shift;
+            }
+
+            @Override
+            public void dragged(int entries) {
+                setShift(startShift + entries);
+            }
+
+            @Override
+            public void reset() {
+                setShift(0);
+            }
+        });
+        JPanel stripRow = new JPanel(new BorderLayout(4, 0));
+        stripRow.setOpaque(false);
+        stripRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+        stripRow.add(shiftButton(Icons.Glyph.CHEVRON_LEFT, "Shift the colours left (hold to repeat, Shift-click for a whole segment)", -1),
+                BorderLayout.WEST);
+        stripRow.add(strip, BorderLayout.CENTER);
+        stripRow.add(shiftButton(Icons.Glyph.CHEVRON_RIGHT, "Shift the colours right (hold to repeat, Shift-click for a whole segment)", 1),
+                BorderLayout.EAST);
+        stripRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, StripPreview.HEIGHT));
+        JPanel statusRow = new JPanel(new BorderLayout(8, 0));
+        statusRow.setOpaque(false);
+        statusRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+        statusRow.setBorder(new EmptyBorder(6, 0, 8, 0));
+        statusRow.add(status, BorderLayout.CENTER);
+        statusRow.add(shiftValue, BorderLayout.EAST);
+        top.add(stripRow);
+        top.add(statusRow);
         add(top, BorderLayout.NORTH);
 
         rows.setLayout(new BoxLayout(rows, BoxLayout.Y_AXIS));
@@ -254,17 +289,71 @@ public final class PaletteEditorPanel extends JPanel {
     // --- edits -----------------------------------------------------------
 
     private Palette currentPalette() {
-        return new Palette(stops.toArray(new Color[0]), shades);
+        return new Palette(stops.toArray(new Color[0]), shades, shift);
+    }
+
+    private int entryCount() {
+        return Math.max(1, stops.size() * shades);
+    }
+
+    /**
+     * Keeps the look when the number of entries changes (a stop added or removed, another number of shades): the
+     * colours stay at the same fraction of the way round the cycle.
+     */
+    private void rescaleShift(int oldEntries) {
+        int now = entryCount();
+        if (oldEntries > 0 && now != oldEntries) {
+            shift = Math.floorMod((int) Math.round(shift / (double) oldEntries * now), now);
+        }
+    }
+
+    /** Moves the colours to {@code value} (wrapped to one cycle). */
+    private void setShift(int value) {
+        int wrapped = Math.floorMod(value, entryCount());
+        if (wrapped != shift) {
+            shift = wrapped;
+            refresh(true);
+        }
+    }
+
+    /** An arrow beside the strip: a press moves the colours one entry, and holding it repeats, faster and faster. */
+    private AppButton shiftButton(Icons.Glyph glyph, String tooltip, int direction) {
+        AppButton button = AppButton.iconButton(glyph, tooltip, AppButton.Style.GHOST, true);
+        button.setFocusable(false);
+        int[] repeats = { 0 };
+        javax.swing.Timer repeat = new javax.swing.Timer(70, null);
+        repeat.setInitialDelay(380);
+        repeat.addActionListener(_ -> {
+            repeats[0]++;
+            int step = repeats[0] < 8 ? 1 : repeats[0] < 24 ? 2 : Math.max(2, entryCount() / 64);
+            setShift(shift + direction * step);
+        });
+        button.getModel().addChangeListener(_ -> {
+            if (button.getModel().isPressed() && !repeat.isRunning()) {
+                repeats[0] = 0;
+                boolean segment = (java.awt.EventQueue.getCurrentEvent() instanceof java.awt.event.InputEvent in)
+                        && in.isShiftDown();
+                setShift(shift + direction * (segment ? Math.max(1, shades) : 1));
+                if (!segment) {
+                    repeat.start();
+                }
+            } else if (!button.getModel().isPressed()) {
+                repeat.stop();
+            }
+        });
+        return button;
     }
 
     private void addStop() {
         if (stops.size() >= MAX_STOPS) {
             return;
         }
+        int before = entryCount();
         Color last = stops.get(stops.size() - 1);
         Color first = stops.get(0);
         stops.add(new Color((last.getRed() + first.getRed()) / 2, (last.getGreen() + first.getGreen()) / 2,
                 (last.getBlue() + first.getBlue()) / 2));
+        rescaleShift(before);
         rebuildRows();
         refresh(true);
         javax.swing.SwingUtilities.invokeLater(() -> rowsScroll.getVerticalScrollBar()
@@ -274,7 +363,9 @@ public final class PaletteEditorPanel extends JPanel {
     private void setShades(int value) {
         int clamped = Math.max(1, Math.min(MAX_SHADES, value));
         if (clamped != shades) {
+            int before = entryCount();
             shades = clamped;
+            rescaleShift(before);
             refresh(true);
         }
     }
@@ -329,6 +420,7 @@ public final class PaletteEditorPanel extends JPanel {
         stops.clear();
         Collections.addAll(stops, baseline.stops());
         shades = baseline.shadesPerSegment();
+        shift = baseline.shift();
         rebuildRows();
         host.revert(baseline);
         refresh(false);
@@ -339,6 +431,7 @@ public final class PaletteEditorPanel extends JPanel {
         Palette palette = currentPalette();
         strip.set(palette, stops.size());
         shadesValue.setText(Integer.toString(shades));
+        shiftValue.setText(shift == 0 ? "" : "Shift " + shift + " / " + entryCount());
         boolean dirty = !same(palette, baseline);
         apply.setEnabled(dirty);
         revert.setEnabled(dirty);
@@ -352,7 +445,7 @@ public final class PaletteEditorPanel extends JPanel {
     }
 
     private static boolean same(Palette a, Palette b) {
-        return a.shadesPerSegment() == b.shadesPerSegment() && Arrays.equals(a.stops(), b.stops());
+        return a.shadesPerSegment() == b.shadesPerSegment() && a.shift() == b.shift() && Arrays.equals(a.stops(), b.stops());
     }
 
     static Optional<Color> parseHex(String text) {
@@ -433,7 +526,9 @@ public final class PaletteEditorPanel extends JPanel {
             AppButton remove = AppButton.iconButton(Icons.Glyph.MINUS, "Remove stop " + (index + 1), AppButton.Style.GHOST, true);
             remove.setEnabled(stops.size() > MIN_STOPS);
             remove.addActionListener(_ -> {
+                int before = entryCount();
                 stops.remove(index);
+                rescaleShift(before);
                 rebuildRows();
                 refresh(true);
             });
@@ -482,23 +577,77 @@ public final class PaletteEditorPanel extends JPanel {
         }
     }
 
-    /** The gradient for one cycle, with a marker under each stop. */
+    /**
+     * The gradient for one cycle, with a marker under each stop. Dragging it sideways moves the colours with the
+     * pointer (one pixel of the strip is a fraction of one cycle); double-clicking puts them back to the start.
+     */
     private static final class StripPreview extends JComponent {
         private static final long serialVersionUID = 1L;
         private static final int BAR = 32;
         private static final int MARKERS = 16;
+        static final int HEIGHT = BAR + MARKERS;
+
+        /** What dragging the strip asks of the editor. */
+        interface ShiftHandler {
+            /** A drag began: remember the shift to move from. */
+            void started();
+
+            /** The pointer is {@code entries} entries further along than where the drag began. */
+            void dragged(int entries);
+
+            /** Double-click: back to no shift. */
+            void reset();
+        }
 
         private transient Color[] gradient = { Color.GRAY };
         private transient Color[] stopColours = {};
+        private int shades = 1;
+        private int shift;
+        private transient ShiftHandler handler;
 
         StripPreview() {
-            setPreferredSize(new Dimension(316, BAR + MARKERS));
-            setMaximumSize(new Dimension(Integer.MAX_VALUE, BAR + MARKERS));
+            setPreferredSize(new Dimension(264, HEIGHT));
+            setMaximumSize(new Dimension(Integer.MAX_VALUE, HEIGHT));
+            setCursor(java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.E_RESIZE_CURSOR));
+            setToolTipText("Drag to shift the colours · double-click to reset");
+            java.awt.event.MouseAdapter mouse = new java.awt.event.MouseAdapter() {
+                private int pressX;
+
+                @Override
+                public void mousePressed(java.awt.event.MouseEvent e) {
+                    if (e.getButton() == java.awt.event.MouseEvent.BUTTON1 && handler != null) {
+                        pressX = e.getX();
+                        handler.started();
+                    }
+                }
+
+                @Override
+                public void mouseDragged(java.awt.event.MouseEvent e) {
+                    if (handler != null && getWidth() > 0 && javax.swing.SwingUtilities.isLeftMouseButton(e)) {
+                        handler.dragged((int) Math.round((e.getX() - pressX) * (double) gradient.length / getWidth()));
+                    }
+                }
+
+                @Override
+                public void mouseClicked(java.awt.event.MouseEvent e) {
+                    if (e.getButton() == java.awt.event.MouseEvent.BUTTON1 && e.getClickCount() == 2 && handler != null) {
+                        handler.reset();
+                    }
+                }
+            };
+            addMouseListener(mouse);
+            addMouseMotionListener(mouse);
+        }
+
+        void setShiftHandler(ShiftHandler handler) {
+            this.handler = handler;
         }
 
         void set(Palette palette, int count) {
             gradient = palette.gradient();
             stopColours = palette.stops();
+            shades = palette.shadesPerSegment();
+            shift = palette.shift();
             repaint();
         }
 
@@ -518,7 +667,9 @@ public final class PaletteEditorPanel extends JPanel {
                 g2.draw(new RoundRectangle2D.Float(0.5f, 0.5f, w - 1, BAR - 1, 9, 9));
                 int n = stopColours.length;
                 for (int i = 0; i < n; i++) {
-                    int cx = (int) Math.round(6 + (w - 12) * (i / (double) n));
+                    // A stop sits where its own colour is in the (shifted) gradient: the markers travel with it.
+                    double along = ((i * (double) shades + shift) % gradient.length) / gradient.length;
+                    int cx = (int) Math.round(6 + (w - 12) * along);
                     g2.setColor(stopColours[i]);
                     g2.fill(new RoundRectangle2D.Float(cx - 6, BAR + 3, 12, 12, 4, 4));
                     g2.setColor(Theme.color(Token.BORDER));

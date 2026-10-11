@@ -8,7 +8,7 @@ An interactive Mandelbrot and Julia set explorer written in Java (Swing): multit
 
 - **Fast navigation**: drag to zoom, right-drag to pan, wheel to zoom, Home, Back and an exact **Go to…**.
 - **Adaptive super-sampling**: a quick 1×1 preview while you move, then it refines on its own once you stop, at up to 8×8 samples per pixel, spent only on the pixels that need them.
-- **Palettes**: built-in and your own, with a live editor that recolours the view as you change it.
+- **Palettes**: built-in and your own, with a live editor that recolours the view as you change it, and arrows (or a drag) to shift the colours around the palette.
 - **Bookmarks**: a thumbnail grid of saved places, with export and import.
 - **Julia sets**: a constant chip with presets, and a **split view** where the pointer on the Mandelbrot set chooses c for the Julia set next to it.
 - **Render queue**: pictures up to 8K and beyond are drawn one at a time in the background, so the view stays usable.
@@ -38,7 +38,7 @@ Give the jar arguments and it renders a picture without opening the window, from
 java -jar target/mandelbrot.jar seahorse.json -o seahorse.png --size 7680x4320 --samples 3
 ```
 
-The input is an exported bookmark, `bookmarks.json` itself (pick one with `--bookmark`), a view file from the old Save button, or a PNG made by this app (it carries its view inside, so it can be re-rendered larger). Options override what the file says: `--size`, `--samples`, `--fractal`, `--c`, `--re`, `--im`, `--zoom`, `--window`, `--threads`. Run with `--help` for the list. Pictures frame the same area the Render dialog would, and memory use is bounded by the output size.
+The input is an exported bookmark, `bookmarks.json` itself (pick one with `--bookmark`), a view file from the old Save button, or a PNG made by this app (it carries its view inside, so it can be re-rendered larger). Options override what the file says: `--size`, `--samples`, `--fractal`, `--c`, `--re`, `--im`, `--zoom`, `--window`, `--shift`, `--threads`. Run with `--help` for the list. Pictures frame the same area the Render dialog would, and memory use is bounded by the output size.
 
 ## Project layout
 

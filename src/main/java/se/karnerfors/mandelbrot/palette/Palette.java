@@ -13,11 +13,21 @@ public final class Palette {
     private final Color[] stops;
     private final int shadesPerSegment;
     private final Color[] gradient;
+    private final int shift;
 
     public Palette(Color[] stops, int shadesPerSegment) {
+        this(stops, shadesPerSegment, 0);
+    }
+
+    /**
+     * @param shift how many entries of the gradient the colours are moved along (positive: towards the right of
+     *              the palette strip); any whole number, wrapped to one cycle
+     */
+    public Palette(Color[] stops, int shadesPerSegment, int shift) {
         this.stops = stops.clone();
         this.shadesPerSegment = shadesPerSegment;
         this.gradient = buildGradient(this.stops, shadesPerSegment);
+        this.shift = Math.floorMod(shift, gradient.length);
     }
 
     public static Palette classicRedWhiteBlack() {
@@ -34,12 +44,32 @@ public final class Palette {
 
     /**
      * The precomputed, fully gamma-blended gradient this palette cycles
-     * through ({@code stops.length * shadesPerSegment} entries). Used by the
-     * palette editor's preview strip so it shows the exact colors the real
-     * render uses, rather than a separately-computed approximation.
+     * through ({@code stops.length * shadesPerSegment} entries), in the order
+     * the render sees it: with the {@linkplain #shift() shift} applied. Used by
+     * the palette editor's preview strip and the swatches so they show the exact
+     * colors the real render uses, rather than a separately-computed approximation.
      */
     public Color[] gradient() {
-        return gradient.clone();
+        Color[] shifted = new Color[gradient.length];
+        for (int i = 0; i < shifted.length; i++) {
+            shifted[i] = gradient[Math.floorMod(i - shift, gradient.length)];
+        }
+        return shifted;
+    }
+
+    /** How many gradient entries the colours are moved along, 0 up to {@link #entryCount()} - 1. */
+    public int shift() {
+        return shift;
+    }
+
+    /** The number of entries in one cycle of the gradient: stops times shades per segment. */
+    public int entryCount() {
+        return gradient.length;
+    }
+
+    /** The same colours moved to {@code newShift} (wrapped to one cycle). */
+    public Palette withShift(int newShift) {
+        return new Palette(stops, shadesPerSegment, newShift);
     }
 
     private static Color[] buildGradient(Color[] stops, int shadesPerSegment) {
@@ -54,7 +84,7 @@ public final class Palette {
     }
 
     public Color colorFor(double smoothIterationCount, double nu) {
-        int colourIndex = Math.floorMod((int) Math.floor(smoothIterationCount), gradient.length);
+        int colourIndex = Math.floorMod((int) Math.floor(smoothIterationCount) - shift, gradient.length);
         return blend(gradient[colourIndex], gradient[(colourIndex + 1) % gradient.length],
                 1.0F - (float) (nu % 1.0));
     }
@@ -84,7 +114,7 @@ public final class Palette {
     @Override
     public String toString() {
         try {
-            return JSON.writeValueAsString(new PaletteView(stops, shadesPerSegment));
+            return JSON.writeValueAsString(new PaletteView(stops, shadesPerSegment, shift));
         } catch (Exception e) {
             throw new IllegalStateException("Failed to serialize Palette to JSON", e);
         }
@@ -96,9 +126,9 @@ public final class Palette {
      * never leaks into the JSON, and so {@link Color} (not bean-friendly for
      * Jackson) doesn't need to be serialized directly.
      */
-    private record PaletteView(List<RgbColor> stops, int shadesPerSegment) {
-        PaletteView(Color[] stops, int shadesPerSegment) {
-            this(Arrays.stream(stops).map(RgbColor::new).toList(), shadesPerSegment);
+    private record PaletteView(List<RgbColor> stops, int shadesPerSegment, int shift) {
+        PaletteView(Color[] stops, int shadesPerSegment, int shift) {
+            this(Arrays.stream(stops).map(RgbColor::new).toList(), shadesPerSegment, shift);
         }
     }
 

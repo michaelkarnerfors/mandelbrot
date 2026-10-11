@@ -1,6 +1,7 @@
 package se.karnerfors.mandelbrot.io;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import java.awt.Color;
 import java.util.Arrays;
 import java.util.List;
@@ -128,14 +129,25 @@ public record MandelbrotConfig(int version, ViewportData viewport, PaletteData p
         }
     }
 
-    public record PaletteData(List<RgbColor> stops, int shadesPerSegment) {
+    /**
+     * @param shift how far the colours are moved along the gradient, in entries; written only when not 0, so
+     *              unshifted palettes look the same in files as before
+     */
+    public record PaletteData(List<RgbColor> stops, int shadesPerSegment,
+            @JsonInclude(JsonInclude.Include.NON_DEFAULT) int shift) {
+
+        public PaletteData(List<RgbColor> stops, int shadesPerSegment) {
+            this(stops, shadesPerSegment, 0);
+        }
+
         public static PaletteData from(Palette palette) {
-            return new PaletteData(Arrays.stream(palette.stops()).map(RgbColor::from).toList(), palette.shadesPerSegment());
+            return new PaletteData(Arrays.stream(palette.stops()).map(RgbColor::from).toList(), palette.shadesPerSegment(),
+                    palette.shift());
         }
 
         public Palette toPalette() {
             Color[] colors = stops.stream().map(RgbColor::toColor).toArray(Color[]::new);
-            return new Palette(colors, shadesPerSegment);
+            return new Palette(colors, shadesPerSegment, shift);
         }
     }
 

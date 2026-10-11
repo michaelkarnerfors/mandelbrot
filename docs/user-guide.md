@@ -36,6 +36,8 @@ The **Palette** button opens a menu of built-in palettes (Classic, Ocean, Ember,
 
 **New…** (or **New / Edit…** when one of yours is active) opens an editor beside the view. Add, remove and reorder colour stops and set how many shades are blended between them. Every change recolours the view immediately, but nothing is kept until **Apply**; **Revert**, or closing the editor, puts back the last applied palette. Give the palette a name and **Create** (or **Overwrite**) to keep it. Your own palettes can be deleted from the menu, after a confirmation.
 
+**Shifting the colours.** The arrows on either side of the gradient strip move all the colours along the palette, so the same fractal gets a different look without changing the palette itself. Click an arrow to move one shade, hold it to repeat (faster the longer you hold), or Shift-click to move a whole segment. You can also drag the gradient itself sideways; the colours follow the pointer. Double-click the strip to put them back. The strip shows the shift as "Shift 17 / 48" (shades moved out of the total in one cycle), and the stop markers under the strip travel with the colours. A shift is an edit like any other: **Apply** keeps it, **Revert** drops it, and adding a stop or changing the shades keeps the look by scaling the shift to the new length. Palettes you **Create** or **Overwrite** keep their shift, and so do bookmarks and the pictures you render.
+
 ## Bookmarks
 
 **Bookmarks** opens a grid of saved places, each with a thumbnail, a name and where it is.
@@ -116,6 +118,7 @@ Without arguments the jar opens the window instead. JVM options such as `-Xmx` g
 | `--window WxH` | The window size the view's zoom refers to. Default 1100x700, the app's default canvas. The picture frames the same area as that window, like the Render dialog. |
 | `--fractal`, `--c` | Override the fractal (`mandelbrot` or `julia`) and the Julia constant (`-0.8,0.156` or `-0.8+0.156i`). |
 | `--re`, `--im`, `--zoom` | Override the centre and zoom of the view. |
+| `--shift N` | Move the palette's colours N shades along its cycle (negative moves the other way). |
 | `--threads N` | Worker threads. Default: all processors. |
 | `-s`, `--silent` | Print nothing on success. Errors still go to stderr. |
 

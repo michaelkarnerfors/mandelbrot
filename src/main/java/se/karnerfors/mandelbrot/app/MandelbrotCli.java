@@ -72,6 +72,7 @@ public final class MandelbrotCli {
               --c RE,IM            the Julia constant, e.g. -0.8,0.156 or -0.8+0.156i
               --re X --im Y        centre of the view
               --zoom Z             zoom, in terms of --window
+              --shift N            move the palette's colours N entries along its cycle (stops x shades; may be negative)
               --threads N          worker threads (default: all processors)
               -s, --silent         print nothing on success (errors still go to stderr); use the exit status
               -h, --help           this text
@@ -91,7 +92,7 @@ public final class MandelbrotCli {
 
     /** What the command line asked for. Null means "not given: use the input's own value". */
     record Options(File input, String bookmark, File output, int[] size, Integer samples, int[] window, RenderAlgorithm fractal,
-            Complex c, Double re, Double im, Double zoom, Integer threads, boolean silent, boolean help) {
+            Complex c, Double re, Double im, Double zoom, Integer shift, Integer threads, boolean silent, boolean help) {
     }
 
     private MandelbrotCli() {
@@ -150,13 +151,14 @@ public final class MandelbrotCli {
         Double re = null;
         Double im = null;
         Double zoom = null;
+        Integer shift = null;
         Integer threads = null;
         boolean silent = false;
         for (int i = 0; i < args.length; i++) {
             String arg = args[i];
             switch (arg) {
                 case "-h", "--help" -> {
-                    return new Options(null, null, null, null, null, null, null, null, null, null, null, null, false, true);
+                    return new Options(null, null, null, null, null, null, null, null, null, null, null, null, null, false, true);
                 }
                 case "-o", "--output" -> output = new File(value(args, ++i, arg));
                 case "-s", "--silent" -> silent = true;
@@ -169,6 +171,7 @@ public final class MandelbrotCli {
                         throw new UsageException("--samples must be 1, 2, 3, 4, 6 or 8, not " + samples);
                     }
                 }
+                case "--shift" -> shift = integer(value(args, ++i, arg), arg);
                 case "--threads" -> {
                     threads = integer(value(args, ++i, arg), arg);
                     if (threads < 1) {
@@ -200,7 +203,7 @@ public final class MandelbrotCli {
         if (input == null) {
             throw new UsageException("no input: give a bookmark or view file (.json), or a .png made by this app");
         }
-        return new Options(input, bookmark, output, size, samples, window, fractal, c, re, im, zoom, threads, silent, false);
+        return new Options(input, bookmark, output, size, samples, window, fractal, c, re, im, zoom, shift, threads, silent, false);
     }
 
     private static String value(String[] args, int index, String option) throws UsageException {
@@ -301,6 +304,9 @@ public final class MandelbrotCli {
         RenderSettings settings = RenderSettings.defaults().withAlgorithm(algorithm).withC(c)
                 .withSupersampleFactor(samples);
         Palette palette = view.toPalette();
+        if (o.shift() != null) {
+            palette = palette.withShift(o.shift());
+        }
         // The view as a window would have it (as the render queue embeds it), so the picture can be re-rendered.
         MandelbrotConfig embedded = MandelbrotConfig.capture(new Viewport(centre, zoom, size[0], size[1]), palette,
                 settings);
