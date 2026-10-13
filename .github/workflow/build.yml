@@ -1,0 +1,45 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+
+      - name: Build
+        run: mvn -B package
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mandelbrot
+          path: target/mandelbrot.jar
+
+      # Rolling "latest" release so a stable download URL always exists:
+      # https://github.com/michaelkarnerfors/mandelbrot/releases/latest/download/mandelbrot.jar
+      - name: Publish latest release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view latest >/dev/null 2>&1; then
+            gh release upload latest target/mandelbrot.jar --clobber
+          else
+            gh release create latest target/mandelbrot.jar \
+              --title "Latest build" \
+              --notes "Automatically built from main. Run with: java -jar mandelbrot.jar" \
+              --target "$GITHUB_SHA" --latest
+          fi
