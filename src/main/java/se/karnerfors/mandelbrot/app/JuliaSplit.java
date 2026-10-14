@@ -11,6 +11,7 @@ import javax.swing.Timer;
 import javax.swing.border.EmptyBorder;
 
 import se.karnerfors.mandelbrot.math.Complex;
+import se.karnerfors.mandelbrot.math.Viewport;
 import se.karnerfors.mandelbrot.render.RenderSettings;
 import se.karnerfors.mandelbrot.ui.FractalPanel;
 import se.karnerfors.mandelbrot.ui.JuliaPane;
@@ -23,6 +24,9 @@ import se.karnerfors.mandelbrot.ui.MandelbrotPickerPane;
  *
  * <p>The picker follows the pointer ("Following") until you click, which locks c; clicking again moves
  * c and keeps it locked.
+ *
+ * <p>The split is what you see while both fractals are switched on in the top bar. Going between Mandelbrot and
+ * Julia always passes through it, so a pane grows or shrinks in place rather than one fractal replacing the other.
  */
 final class JuliaSplit {
 
@@ -139,6 +143,11 @@ final class JuliaSplit {
         return layout != Layout.SINGLE;
     }
 
+    /** What the Mandelbrot pane shows, so the Mandelbrot view can carry on from it when the split closes. */
+    Viewport pickerViewport() {
+        return picker.getCurrentViewport();
+    }
+
     /** Shows or hides the Mandelbrot picker. Starts locked at the c in use, so nothing moves until you ask. */
     void setActive(boolean on) {
         if (on == isActive()) {
@@ -247,8 +256,10 @@ final class JuliaSplit {
     // --- layouts --------------------------------------------------------------
 
     /**
-     * Where the Mandelbrot pane looks when the split opens: where the Mandelbrot view was when you switched to
-     * Julia, otherwise where the picker was last left; the whole set if c is not in sight there.
+     * Where the Mandelbrot pane looks when the split opens: where the Mandelbrot view was when Julia was switched
+     * on, otherwise where the picker was last left; the whole set if c is not in sight there. The first time in a
+     * run that started in Julia, it is centred on c at the zoom the Mandelbrot side last had (remembered between
+     * runs), or shows the whole set if there is none.
      */
     private void placePicker() {
         if (rememberedCentre != null) {
@@ -258,6 +269,11 @@ final class JuliaSplit {
             return;
         }
         Complex c = host.currentC();
+        if (!pickerPlaced && lastMandelbrotZoom != null) {
+            picker.goTo(c, lastMandelbrotZoom);
+            pickerPlaced = true;
+            return;
+        }
         var view = picker.getCurrentViewport();
         double x = view.width() / 2.0 + (c.real - view.center().real) * view.zoom();
         double y = view.height() / 2.0 + (c.imaginary - view.center().imaginary) * view.zoom();

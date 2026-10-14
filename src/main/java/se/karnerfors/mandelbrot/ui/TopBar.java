@@ -39,14 +39,15 @@ public final class TopBar extends JPanel {
             + "so 3×3 means 9 samples. Moving around draws a quick 1×1 preview,<br>"
             + "then the view refines to this quality once you stop.</html>";
 
+    private static final String FRACTAL_TOOLTIP = "<html>Switch each fractal on or off; one always stays on.<br>"
+            + "With both on, Mandelbrot is beside Julia and the pointer on it chooses c.</html>";
+
     public final AppButton home = AppButton.iconButton(Icons.Glyph.HOME, "Home", AppButton.Style.GHOST, false);
     public final AppButton back = AppButton.iconButton(Icons.Glyph.BACK, "Back", AppButton.Style.GHOST, false);
-    public final SegmentedControl<RenderAlgorithm> fractal;
+    /** Mandelbrot, Julia, or both side by side (the split view), where the Mandelbrot set chooses c. */
+    public final ToggleSegmentedControl<RenderAlgorithm> fractal;
     /** Julia mode: the constant c, which opens the presets. */
     public final CChip cChip = new CChip();
-    /** Julia mode only: shows the Mandelbrot set beside the Julia set, where the pointer chooses c. */
-    public final AppButton split = AppButton.iconButton(Icons.Glyph.SPLIT, "Split view: Mandelbrot beside Julia",
-            AppButton.Style.GHOST, false);
     public final AppButton palette = new AppButton("Classic", null, AppButton.Style.OUTLINE, false);
     public final SegmentedControl<Integer> supersample;
     public final AppButton bookmarks = new AppButton("Bookmarks", Icons.Glyph.STAR, AppButton.Style.OUTLINE, false);
@@ -72,8 +73,9 @@ public final class TopBar extends JPanel {
         setBorder(new EmptyBorder(0, 12, 0, 12));
         setOpaque(true);
 
-        fractal = new SegmentedControl<>(List.of(RenderAlgorithm.values()), algorithm, RenderAlgorithm::toString);
-        fractal.setToolTipText("Fractal");
+        fractal = new ToggleSegmentedControl<>(List.of(RenderAlgorithm.values()), List.of(algorithm),
+                RenderAlgorithm::toString);
+        fractal.setToolTipText(FRACTAL_TOOLTIP);
         supersample = new SegmentedControl<>(RenderSettings.SUPERSAMPLE_FACTORS, supersampleFactor,
                 RenderSettings::supersampleLabel);
         supersample.setToolTipText(SUPERSAMPLING_TOOLTIP);
@@ -89,7 +91,7 @@ public final class TopBar extends JPanel {
         blank.setOpaque(false);
         cSlot.add(blank, RenderAlgorithm.MANDELBROT.name());
         cSlot.add(cChip, RenderAlgorithm.JULIA.name());
-        showFractal(algorithm);
+        showFractals(algorithm == RenderAlgorithm.MANDELBROT, algorithm == RenderAlgorithm.JULIA);
         back.setEnabled(false);
         palette.setToolTipText("Palettes");
         bookmarks.setToolTipText("Bookmarks");
@@ -102,8 +104,6 @@ public final class TopBar extends JPanel {
         add(center(back));
         add(separator());
         add(center(fractal));
-        add(Box.createHorizontalStrut(4));
-        add(center(split));
         add(Box.createHorizontalStrut(8));
         add(center(cSlot));
         add(separator());
@@ -130,16 +130,21 @@ public final class TopBar extends JPanel {
         });
     }
 
-    /** Lights the split button while the Mandelbrot picker is showing. */
-    public void setSplitActive(boolean active) {
-        split.setStyle(active ? AppButton.Style.ON : AppButton.Style.GHOST);
-        split.setToolTipText(active ? "Back to a single Julia view" : "Split view: Mandelbrot beside Julia");
-    }
-
-    /** Shows the c chip in Julia mode (and keeps its room free in Mandelbrot mode). */
-    public void showFractal(RenderAlgorithm algorithm) {
-        split.setEnabled(algorithm == RenderAlgorithm.JULIA);
-        ((CardLayout) cSlot.getLayout()).show(cSlot, algorithm.name());
+    /**
+     * Shows which fractals are on (both: the split view), without notifying the listener, and the c chip
+     * whenever Julia is on (its room stays free otherwise).
+     */
+    public void showFractals(boolean mandelbrot, boolean julia) {
+        List<RenderAlgorithm> shown = new ArrayList<>();
+        if (mandelbrot) {
+            shown.add(RenderAlgorithm.MANDELBROT);
+        }
+        if (julia) {
+            shown.add(RenderAlgorithm.JULIA);
+        }
+        fractal.setOnSilently(shown);
+        ((CardLayout) cSlot.getLayout()).show(cSlot,
+                (julia ? RenderAlgorithm.JULIA : RenderAlgorithm.MANDELBROT).name());
     }
 
     /**

@@ -50,7 +50,13 @@ The **Palette** button opens a menu of built-in palettes (Classic, Ocean, Ember,
 
 ## Julia sets
 
-The **Mandelbrot / Julia** control switches fractal. Switching to Julia takes the constant c from the point the Mandelbrot view is centred on. Switching back centres the Mandelbrot view on c at the zoom the Mandelbrot side last had (the whole set if there is none). If that was not what you wanted, **Back** undoes it.
+**Mandelbrot** and **Julia** in the top bar switch on and off on their own, and one always stays on. With both on you get the split view (below). So going from one fractal to the other always passes through the split: switch the other one on, then this one off.
+
+- Switching Julia on beside Mandelbrot takes the constant c from the point the Mandelbrot view is centred on. The Mandelbrot pane keeps that view, with a crosshair on c.
+- Switching Julia off lets the Mandelbrot pane take the whole window, carrying on from where it was.
+- Switching Mandelbrot on or off beside Julia only opens or closes the Mandelbrot pane.
+
+If a switch did not do what you wanted, **Back** returns to the previous view.
 
 ### The c chip and presets
 
@@ -65,7 +71,7 @@ Presets start as five classics and are yours to change.
 
 ### Split view
 
-In Julia mode, the split button next to the fractal control shows the Mandelbrot set beside the Julia set.
+With both Mandelbrot and Julia switched on, the Mandelbrot set is shown beside the Julia set.
 
 - The Julia pane header says **Locked (double-click to unlock)** or **Following (click to lock)**. It starts locked at the c in use.
 - **Press or drag** on the Mandelbrot pane to put c under the pointer and lock it. The Julia set redraws at 1x while you drag and refines when you let go.
@@ -74,7 +80,7 @@ In Julia mode, the split button next to the fractal control shows the Mandelbrot
 - **Copy c** in the header copies the constant to the clipboard.
 - The status-bar hint changes with the pane under the pointer.
 
-Choosing Mandelbrot in the fractal control (or opening a Mandelbrot bookmark) closes the split. The split is not remembered between runs; a bookmark saved in Julia mode brings you back, and the split button reopens the picker.
+Switching either fractal off (or opening a Mandelbrot bookmark) closes the split. The split is not remembered between runs: a bookmark saved in Julia mode brings you back, and switching Mandelbrot on reopens the Mandelbrot pane. The first time in a run, that pane is centred on c at the zoom the Mandelbrot side last had (the whole set if there is none).
 
 ## Rendering to a file
 

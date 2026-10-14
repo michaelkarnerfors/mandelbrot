@@ -145,9 +145,9 @@ public class MandelbrotApp {
             topBar.cChip.setValue(c.real, c.imaginary, match == null ? null : match.name());
         };
         Runnable syncFractalControls = () -> {
-            RenderSettings settings = fractalPanel.getRenderSettings();
-            topBar.fractal.setSelectedSilently(settings.algorithm());
-            topBar.showFractal(settings.algorithm());
+            boolean julia = fractalPanel.getRenderSettings().algorithm() == RenderAlgorithm.JULIA;
+            boolean split = splitRef[0] != null && splitRef[0].isActive();
+            topBar.showFractals(!julia || split, julia);
             updateChip.run();
             if (splitRef[0] != null) {
                 splitRef[0].refresh();
@@ -156,36 +156,6 @@ public class MandelbrotApp {
         };
         syncFractalControls.run();
 
-        topBar.fractal.setChangeListener(selected -> {
-            RenderSettings current = fractalPanel.getRenderSettings();
-            topBar.showFractal(selected);
-            if (selected == current.algorithm()) {
-                return;
-            }
-            Double zoomBack = null;
-            if (selected == RenderAlgorithm.MANDELBROT && splitRef[0] != null) {
-                zoomBack = splitRef[0].lastMandelbrotZoom();
-                splitRef[0].setActive(false);
-            }
-            RenderSettings next = current.withAlgorithm(selected);
-            if (selected == RenderAlgorithm.JULIA) {
-                // Mandelbrot -> Julia: the Julia set of the point the view is centred on. The split view's
-                // Mandelbrot pane picks up where this view was, with its crosshair on that point.
-                Viewport view = fractalPanel.getCurrentViewport();
-                next = next.withC(view.center());
-                if (splitRef[0] != null) {
-                    splitRef[0].rememberMandelbrotView(view.center(), view.zoom());
-                }
-            }
-            if (selected == RenderAlgorithm.MANDELBROT && zoomBack != null) {
-                // Julia -> Mandelbrot: centred on c, at the zoom the Mandelbrot side last had.
-                fractalPanel.setRenderSettingsAndGoTo(next, current.c(), zoomBack);
-            } else {
-                fractalPanel.setRenderSettingsAndGoHome(next);
-            }
-            syncFractalControls.run();
-            recorder.markDirty();
-        });
         JuliaPresetPopover.Host juliaHost = new JuliaPresetPopover.Host() {
             @Override
             public Complex currentC() {
@@ -432,7 +402,6 @@ public class MandelbrotApp {
 
             @Override
             public void activeChanged(boolean active) {
-                topBar.setSplitActive(active);
                 overPicker[0] = false;
                 refreshHint.run();
             }
@@ -444,10 +413,30 @@ public class MandelbrotApp {
         });
         splitRef[0] = split;
         remembered.map(SessionState::mandelbrotZoom).ifPresent(split::setLastMandelbrotZoom);
-        topBar.split.addActionListener(_ -> {
-            if (topBar.split.isEnabled()) {
-                split.setActive(!split.isActive());
+
+        // Mandelbrot and Julia switch on and off on their own; with both on, the split shows them side by side.
+        // Going from one to the other always passes through the split, where a pane grows or shrinks in place.
+        topBar.fractal.setChangeListener(_ -> {
+            RenderSettings current = fractalPanel.getRenderSettings();
+            if (current.algorithm() == RenderAlgorithm.MANDELBROT) {
+                // Julia switched on: the Julia set of the point the view is centred on, with the Mandelbrot pane
+                // beside it where this view was and its crosshair on that point.
+                Viewport view = fractalPanel.getCurrentViewport();
+                split.rememberMandelbrotView(view.center(), view.zoom());
+                fractalPanel.setRenderSettingsAndGoHome(current.withAlgorithm(RenderAlgorithm.JULIA).withC(view.center()));
+                split.setActive(true);
+            } else if (!topBar.fractal.isOn(RenderAlgorithm.JULIA)) {
+                // Julia switched off: the Mandelbrot pane takes the whole window and carries on from where it was.
+                Viewport picker = split.pickerViewport();
+                split.setActive(false);
+                fractalPanel.setRenderSettingsAndGoTo(current.withAlgorithm(RenderAlgorithm.MANDELBROT),
+                        picker.center(), picker.zoom());
+            } else {
+                // Mandelbrot switched on or off beside Julia.
+                split.setActive(topBar.fractal.isOn(RenderAlgorithm.MANDELBROT));
             }
+            syncFractalControls.run();
+            recorder.markDirty();
         });
 
         // Render…: pictures are added to a queue that draws them one at a time in the background.

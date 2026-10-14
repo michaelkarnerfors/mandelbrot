@@ -24,6 +24,7 @@ Michael owns the product and the code. Claude acts as UX/UI designer and impleme
 | Supersample steps | Super-sampling (top bar, formerly "Settle at"), Render and `--samples` offer 1×1, 2×2, 3×3, 4×4 (was 1x/2x/4x/9x, where 9x meant 81 samples per pixel); saved 9 becomes 4×4 | bfccb80 |
 | Adaptive super-sampling | Only pixels that differ from a neighbour (colour above 12/255, inside vs outside the set, or a jump of more than a palette segment; mask widened by one pixel) get the n×n samples, now centred on the pixel. The window refines from the preview's samples and keeps them plus the extra ones per tile; factor changes and palette changes top up instead of redrawing. Steps now 1×1 to 8×8 (saved 9 becomes 8×8). Status chip tooltip shows the share refined; estimates and memory notes use it. 1.2× to 8× faster at 4×4, visually identical | 7fa2112 |
 | Palette phase shift | Arrows beside the editor strip (hold to repeat, Shift moves a segment) and dragging the strip rotate the palette by whole gradient entries; double-click resets. The shift is an edit like any other (live preview, Apply, Revert, dirty state), rescales when stops or shades change, is saved with the library, bookmarks and PNG view (omitted when 0), and has `--shift N` in the CLI | 8f39294 |
+| Fractal toggles | The split button is gone: Mandelbrot and Julia are toggles (`ToggleSegmentedControl`), at least one on, both on is the split. Going between them always passes through the split, where a pane grows or shrinks in place: Julia off lets the Mandelbrot pane take the window as it is (it used to centre on c) | |
 
 Per-user files live in `~/mandelbrot/` (override with `-Dmandelbrot.home`): `state.json`, `palettes.json`, `bookmarks.json`, `julia-presets.json`, `renders/`. All follow the same pattern: tolerant load, atomic write, `MandelbrotConfig` as the shared representation of "a place".
 
@@ -34,8 +35,8 @@ Per-user files live in `~/mandelbrot/` (override with `-Dmandelbrot.home`): `sta
 - Exports run one at a time at low priority; the heaviest quality stays selectable with a warning; live recolour uses one sample per pixel.
 - No keyboard navigation and no sharing features for now (deliberately deferred).
 - Go to stays in the status bar plus a modal.
-- Switching Julia to Mandelbrot centres on c at the remembered Mandelbrot zoom (the whole set if none), because you probably want to pick a new c. Back returns to the previous view, so a mistake costs one click.
-- The split view is not remembered between runs: a bookmark saved as Julia brings you back, and the split button reopens the picker.
+- There is no direct switch between Mandelbrot and Julia: both toggles on is the split, and you pass through it. Switching Julia on keeps the Mandelbrot view in its pane (c is its centre); switching Julia off lets the Mandelbrot pane take the window as it is. A pane grows or shrinks in place instead of one fractal replacing the other.
+- The split view is not remembered between runs: a bookmark saved as Julia brings you back, and switching Mandelbrot on reopens the picker. The first time in a run it is centred on c at the remembered Mandelbrot zoom (the whole set if none).
 - The Render dialog follows the Julia canvas while split (checked: feels right). "Sync to current view" is enabled only when the dialog differs from the live window.
 - In split mode the main canvas is always the Julia canvas, so bookmarks, the render queue and the session keep working unchanged; the Mandelbrot pane is a second, 1x canvas.
 

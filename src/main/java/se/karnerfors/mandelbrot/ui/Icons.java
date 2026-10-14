@@ -25,7 +25,7 @@ import javax.swing.UIManager;
 public final class Icons {
 
     public enum Glyph {
-        HOME, BACK, RENDER, CHEVRON_DOWN, CHEVRON_UP, CHEVRON_LEFT, CHEVRON_RIGHT, TARGET, SUN, MOON, CHECK, PLUS, MINUS, CLOSE, EDIT, TRASH, STAR, UPLOAD, SEARCH, OPEN, FOLDER, ALERT, COPY, SPLIT
+        HOME, BACK, RENDER, CHEVRON_DOWN, CHEVRON_UP, CHEVRON_LEFT, CHEVRON_RIGHT, TARGET, SUN, MOON, CHECK, PLUS, MINUS, CLOSE, EDIT, TRASH, STAR, UPLOAD, SEARCH, OPEN, FOLDER, ALERT, COPY
     }
 
     private Icons() {
@@ -158,8 +158,6 @@ public final class Icons {
             case COPY:
                 return new Shape[] { new RoundRectangle2D.Double(9, 9, 11, 11, 4, 4),
                         poly(false, 5, 15, 5, 6, 7, 4, 16, 4) };
-            case SPLIT:
-                return new Shape[] { new RoundRectangle2D.Double(3, 4, 18, 16, 4, 4), new Line2D.Double(12, 4, 12, 20) };
             default:
                 return new Shape[0];
         }
