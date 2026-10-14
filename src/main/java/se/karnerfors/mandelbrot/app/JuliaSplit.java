@@ -3,7 +3,6 @@ package se.karnerfors.mandelbrot.app;
 import java.awt.BorderLayout;
 import java.awt.datatransfer.StringSelection;
 
-import javax.swing.JFrame;
 import javax.swing.JPanel;
 import javax.swing.JSplitPane;
 import javax.swing.SwingUtilities;
@@ -49,7 +48,6 @@ final class JuliaSplit {
 
     private enum Layout { SINGLE, SPLIT }
 
-    private final JFrame owner;
     private final JPanel stage;
     private final FractalPanel julia;
     private final FractalPanel picker;
@@ -68,8 +66,7 @@ final class JuliaSplit {
     private Double lastMandelbrotZoom;
     private boolean pickerPlaced;
 
-    JuliaSplit(JFrame owner, JPanel stage, FractalPanel julia, Host host) {
-        this.owner = owner;
+    JuliaSplit(JPanel stage, FractalPanel julia, Host host) {
         this.stage = stage;
         this.julia = julia;
         this.host = host;
@@ -148,8 +145,17 @@ final class JuliaSplit {
         return picker.getCurrentViewport();
     }
 
-    /** Shows or hides the Mandelbrot picker. Starts locked at the c in use, so nothing moves until you ask. */
+    /** Shows or hides the Mandelbrot picker, leaving the Julia view as it is. */
     void setActive(boolean on) {
+        setActive(on, false);
+    }
+
+    /**
+     * Shows or hides the Mandelbrot picker. Starts locked at the c in use, so nothing moves until you ask.
+     * {@code homeJulia} sends the Julia view to its home view once the panes are laid out (it is sized for the
+     * narrower pane then, which is why it waits); otherwise the Julia view keeps its centre and zoom.
+     */
+    void setActive(boolean on, boolean homeJulia) {
         if (on == isActive()) {
             return;
         }
@@ -159,7 +165,9 @@ final class JuliaSplit {
             SwingUtilities.invokeLater(() -> {
                 split.setDividerLocation(0.5);
                 placePicker();
-                julia.goHome();
+                if (homeJulia) {
+                    julia.goHome();
+                }
             });
         } else {
             followTimer.stop();

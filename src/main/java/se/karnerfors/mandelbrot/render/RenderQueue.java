@@ -36,8 +36,6 @@ public final class RenderQueue {
     private final int tileThreads;
     private final List<Runnable> listeners = new java.util.concurrent.CopyOnWriteArrayList<>();
     private boolean changePending;
-    private volatile RenderJob running;
-
     public RenderQueue() {
         this(Math.max(1, Runtime.getRuntime().availableProcessors()));
     }
@@ -159,7 +157,6 @@ public final class RenderQueue {
         if (job.cancelRequested()) {
             return;
         }
-        running = job;
         job.start();
         fireChanged();
         ExecutorService tiles = Executors.newFixedThreadPool(tileThreads, daemon("render-queue-tile", Thread.MIN_PRIORITY));
@@ -200,7 +197,6 @@ public final class RenderQueue {
             job.fail(ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage(), 0);
         } finally {
             tiles.shutdownNow();
-            running = null;
             fireChanged();
         }
     }

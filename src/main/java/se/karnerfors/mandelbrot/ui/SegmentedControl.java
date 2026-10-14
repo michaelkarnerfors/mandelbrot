@@ -123,15 +123,6 @@ public final class SegmentedControl<T> extends JComponent implements Accessible 
         return items.get(selected);
     }
 
-    /** Changes the selection without notifying the listener (for syncing to state set elsewhere). */
-    public void setSelectedSilently(T item) {
-        int index = items.indexOf(item);
-        if (index >= 0 && index != selected) {
-            selected = index;
-            repaint();
-        }
-    }
-
     /** Called when the user picks a different item. */
     public void setChangeListener(Consumer<T> listener) {
         this.changeListener = listener != null ? listener : _ -> { };

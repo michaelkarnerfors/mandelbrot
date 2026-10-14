@@ -343,7 +343,8 @@ public final class FractalPanel extends JPanel {
         if (history.isEmpty()) {
             return;
         }
-        currentViewport = history.pop();
+        // The panel may have changed size since (the split opening or closing), so keep the place, not the size.
+        currentViewport = history.pop().withSize(getWidth(), getHeight());
         notifyViewportChanged();
         repaint();
         submitRender();
@@ -555,6 +556,11 @@ public final class FractalPanel extends JPanel {
             return;
         }
         submitRender();
+    }
+
+    /** Swaps the settings without drawing anything: the caller follows up with a jump ({@link #goHome()}, {@link #goTo}). */
+    public void swapRenderSettings(RenderSettings newSettings) {
+        this.renderSettings = newSettings;
     }
 
     /** Swaps the settings and jumps to {@code center} at {@code zoom}, with a single render. */

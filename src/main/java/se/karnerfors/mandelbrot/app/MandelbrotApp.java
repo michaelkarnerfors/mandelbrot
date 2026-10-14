@@ -377,7 +377,7 @@ public class MandelbrotApp {
         }));
 
         // The Julia explorer: the Mandelbrot set beside the Julia set, where the pointer chooses c.
-        JuliaSplit split = new JuliaSplit(frame, stage, fractalPanel, new JuliaSplit.Host() {
+        JuliaSplit split = new JuliaSplit(stage, fractalPanel, new JuliaSplit.Host() {
             @Override
             public void cChosen(Complex c) {
                 RenderSettings settings = fractalPanel.getRenderSettings();
@@ -423,8 +423,9 @@ public class MandelbrotApp {
                 // beside it where this view was and its crosshair on that point.
                 Viewport view = fractalPanel.getCurrentViewport();
                 split.rememberMandelbrotView(view.center(), view.zoom());
-                fractalPanel.setRenderSettingsAndGoHome(current.withAlgorithm(RenderAlgorithm.JULIA).withC(view.center()));
-                split.setActive(true);
+                // The Julia home view is drawn once, for the narrower pane, when the split has been laid out.
+                fractalPanel.swapRenderSettings(current.withAlgorithm(RenderAlgorithm.JULIA).withC(view.center()));
+                split.setActive(true, true);
             } else if (!topBar.fractal.isOn(RenderAlgorithm.JULIA)) {
                 // Julia switched off: the Mandelbrot pane takes the whole window and carries on from where it was.
                 Viewport picker = split.pickerViewport();

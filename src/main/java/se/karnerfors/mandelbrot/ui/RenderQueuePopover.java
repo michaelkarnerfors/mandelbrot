@@ -59,7 +59,6 @@ public final class RenderQueuePopover {
     }
 
     private static final class Session {
-        private final Component invoker;
         private final RenderQueue queue;
         private final Host host;
         private final JPopupMenu popup = new JPopupMenu();
@@ -80,7 +79,6 @@ public final class RenderQueuePopover {
         private final int anchorTop;
 
         Session(Component invoker, RenderQueue queue, Host host) {
-            this.invoker = invoker;
             this.queue = queue;
             this.host = host;
             this.anchor = invoker.getParent() != null ? invoker.getParent() : invoker;

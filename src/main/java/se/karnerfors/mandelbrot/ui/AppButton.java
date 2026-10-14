@@ -22,7 +22,7 @@ public class AppButton extends JButton {
 
     private static final long serialVersionUID = 1L;
 
-    public enum Style { GHOST, OUTLINE, PRIMARY, ON }
+    public enum Style { GHOST, OUTLINE, PRIMARY }
 
     private static final int PAD_X = 10;
     private static final int ICON_TEXT_GAP = 6;
@@ -191,10 +191,6 @@ public class AppButton extends JButton {
                     if (hover || pressed) {
                         fill = brighter(fill, pressed ? 0.88f : 1.08f);
                     }
-                    break;
-                case ON:
-                    fill = Theme.color(Token.ACCENT_SOFT);
-                    fg = Theme.color(Token.ACCENT);
                     break;
                 default:
                     break;

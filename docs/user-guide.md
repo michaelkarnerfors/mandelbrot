@@ -13,7 +13,7 @@ A top bar with the controls, the fractal in the middle, and a status bar underne
 - **Left-drag** a rectangle to zoom into it.
 - **Right-drag** to pan.
 - **Mouse wheel** to zoom at the pointer.
-- **Home** shows the whole set. **Back** steps back through your views, including a switch between Mandelbrot and Julia, so a mode change is never a one-way trip.
+- **Home** shows the whole set. **Back** steps back through your positions. It does not undo switching between Mandelbrot and Julia.
 - **Go to…** centres on exact coordinates. Type Re, Im and zoom, or paste a complex number such as `-0.7436 + 0.1318i` into Re and both fields fill in.
 
 Zoom is limited to roughly 0.01 to 10¹³. The maths is plain double precision, so a very deep zoom turns blocky long before the upper limit.
@@ -54,9 +54,9 @@ The **Palette** button opens a menu of built-in palettes (Classic, Ocean, Ember,
 
 - Switching Julia on beside Mandelbrot takes the constant c from the point the Mandelbrot view is centred on. The Mandelbrot pane keeps that view, with a crosshair on c.
 - Switching Julia off lets the Mandelbrot pane take the whole window, carrying on from where it was.
-- Switching Mandelbrot on or off beside Julia only opens or closes the Mandelbrot pane.
+- Switching Mandelbrot on or off beside Julia opens or closes the Mandelbrot pane. The Julia view keeps its centre and zoom.
 
-If a switch did not do what you wanted, **Back** returns to the previous view.
+**Back** returns to the previous position, but it does not switch fractals: to undo a switch, switch back.
 
 ### The c chip and presets
 
