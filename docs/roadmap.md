@@ -7,25 +7,25 @@ Michael owns the product and the code. Claude acts as UX/UI designer and impleme
 
 ## What exists (package `se.karnerfors.mandelbrot`, Java 25, Maven, Jackson, FlatLaf)
 
-| Slice | What | Commit |
-|---|---|---|
-| 1 Shell | Themed (light/dark) top bar, status bar, custom-painted controls, Go to | 7dccbfb |
-| 2 Session memory | Reopens where you left off (`state.json`) | 0848a8d |
-| 3 Settle-at supersampling | 1x preview, then refinement at 1x/2x/4x/9x once the view is at rest | abe0fb9 |
-| 4 Palettes | Built-in and own palettes, non-modal editor with live recolour (`palettes.json`) | eab3583 |
-| 5 Bookmarks | Thumbnail grid, rename, export/import, filter (`bookmarks.json`); popup-dismiss and stop-refinement-on-move fixes | aacc027 |
-| 6 Render queue | One-at-a-time low-priority renders to `~/mandelbrot/renders`, status-bar chip and popover | cdae33f |
-| 7a Julia presets | c chip with preset popover (thumbnails, rename, delete, reorder, save current c), `julia-presets.json` | 185d6cb |
-| 7b Julia split explorer | Mandelbrot pane beside the Julia pane; press/drag sets c and locks, double-click unlocks and c follows the pointer; Julia redraws at 1x while dragging and refines on release | 8495ee8 |
-| Follow-ups | Palette identity remembered across runs, palette menu survives delete, default canvas 1100 x 700 | 310215c |
-| Diligence cleanup | "Sync to current view" in the Render dialog, confirm before deleting a preset, status-bar hint follows the pane, README split into a front page and `docs/user-guide.md` | de0cbb0 |
-| Command-line renderer | `MandelbrotCli` renders from a bookmark, view file or app PNG, with overrides, `--silent` and exit codes for batch use | cf1087c |
-| Runnable jar | `mvn package` builds a self-contained `target/mandelbrot.jar`; `Main` opens the window without arguments and runs `MandelbrotCli` with them. The CLI demo is retired: an input is required | 53bd1c8 |
-| Supersample steps | Super-sampling (top bar, formerly "Settle at"), Render and `--samples` offer 1×1, 2×2, 3×3, 4×4 (was 1x/2x/4x/9x, where 9x meant 81 samples per pixel); saved 9 becomes 4×4 | bfccb80 |
-| Adaptive super-sampling | Only pixels that differ from a neighbour (colour above 12/255, inside vs outside the set, or a jump of more than a palette segment; mask widened by one pixel) get the n×n samples, now centred on the pixel. The window refines from the preview's samples and keeps them plus the extra ones per tile; factor changes and palette changes top up instead of redrawing. Steps now 1×1 to 8×8 (saved 9 becomes 8×8). Status chip tooltip shows the share refined; estimates and memory notes use it. 1.2× to 8× faster at 4×4, visually identical | 7fa2112 |
-| Palette phase shift | Arrows beside the editor strip (hold to repeat, Shift moves a segment) and dragging the strip rotate the palette by whole gradient entries; double-click resets. The shift is an edit like any other (live preview, Apply, Revert, dirty state), rescales when stops or shades change, is saved with the library, bookmarks and PNG view (omitted when 0), and has `--shift N` in the CLI | 8f39294 |
-| Fractal toggles | The split button is gone: Mandelbrot and Julia are toggles (`ToggleSegmentedControl`), at least one on, both on is the split. Going between them always passes through the split, where a pane grows or shrinks in place: Julia off lets the Mandelbrot pane take the window as it is (it used to centre on c) | |
-| Max iterations | A status-bar chip beside the zoom opens a popover with a logarithmic slider (10 to 100000, redraws while dragging) and a digits-only field for an exact value; they follow each other, the field applies on Enter, on leaving it and on closing. Saved as `maxIterations` in bookmarks, session, view files and PNG metadata (missing reads as 1000, out of range is clamped); the render queue and the CLI use it (the CLI also has `--iterations N`, rejected outside 10 to 100000); the Mandelbrot pane in the split follows | |
+| Slice | What |
+|---|---|
+| 1 Shell | Themed (light/dark) top bar, status bar, custom-painted controls, Go to |
+| 2 Session memory | Reopens where you left off (`state.json`) |
+| 3 Settle-at supersampling | 1x preview, then refinement at 1x/2x/4x/9x once the view is at rest |
+| 4 Palettes | Built-in and own palettes, non-modal editor with live recolour (`palettes.json`) |
+| 5 Bookmarks | Thumbnail grid, rename, export/import, filter (`bookmarks.json`); popup-dismiss and stop-refinement-on-move fixes |
+| 6 Render queue | One-at-a-time low-priority renders to `~/mandelbrot/renders`, status-bar chip and popover |
+| 7a Julia presets | c chip with preset popover (thumbnails, rename, delete, reorder, save current c), `julia-presets.json` |
+| 7b Julia split explorer | Mandelbrot pane beside the Julia pane; press/drag sets c and locks, double-click unlocks and c follows the pointer; Julia redraws at 1x while dragging and refines on release |
+| Follow-ups | Palette identity remembered across runs, palette menu survives delete, default canvas 1100 x 700 |
+| Diligence cleanup | "Sync to current view" in the Render dialog, confirm before deleting a preset, status-bar hint follows the pane, README split into a front page and `docs/user-guide.md` |
+| Command-line renderer | `MandelbrotCli` renders from a bookmark, view file or app PNG, with overrides, `--silent` and exit codes for batch use |
+| Runnable jar | `mvn package` builds a self-contained `target/mandelbrot.jar`; `Main` opens the window without arguments and runs `MandelbrotCli` with them. The CLI demo is retired: an input is required |
+| Supersample steps | Super-sampling (top bar, formerly "Settle at"), Render and `--samples` offer 1×1, 2×2, 3×3, 4×4 (was 1x/2x/4x/9x, where 9x meant 81 samples per pixel); saved 9 becomes 4×4 |
+| Adaptive super-sampling | Only pixels that differ from a neighbour (colour above 12/255, inside vs outside the set, or a jump of more than a palette segment; mask widened by one pixel) get the n×n samples, now centred on the pixel. The window refines from the preview's samples and keeps them plus the extra ones per tile; factor changes and palette changes top up instead of redrawing. Steps now 1×1 to 8×8 (saved 9 becomes 8×8). Status chip tooltip shows the share refined; estimates and memory notes use it. 1.2× to 8× faster at 4×4, visually identical |
+| Palette phase shift | Arrows beside the editor strip (hold to repeat, Shift moves a segment) and dragging the strip rotate the palette by whole gradient entries; double-click resets. The shift is an edit like any other (live preview, Apply, Revert, dirty state), rescales when stops or shades change, is saved with the library, bookmarks and PNG view (omitted when 0), and has `--shift N` in the CLI |
+| Fractal toggles | The split button is gone: Mandelbrot and Julia are toggles (`ToggleSegmentedControl`), at least one on, both on is the split. Going between them always passes through the split, where a pane grows or shrinks in place: Julia off lets the Mandelbrot pane take the window as it is (it used to centre on c) |
+| Max iterations | A status-bar chip beside the zoom opens a popover with a logarithmic slider (10 to 100000, redraws while dragging) and a digits-only field for an exact value; they follow each other, the field applies on Enter, on leaving it and on closing. Saved as `maxIterations` in bookmarks, session, view files and PNG metadata (missing reads as 1000, out of range is clamped); the render queue and the CLI use it (the CLI also has `--iterations N`, rejected outside 10 to 100000); the Mandelbrot pane in the split follows |
 
 Per-user files live in `~/mandelbrot/` (override with `-Dmandelbrot.home`): `state.json`, `palettes.json`, `bookmarks.json`, `julia-presets.json`, `renders/`. All follow the same pattern: tolerant load, atomic write, `MandelbrotConfig` as the shared representation of "a place".
 
