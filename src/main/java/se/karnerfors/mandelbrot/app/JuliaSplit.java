@@ -140,6 +140,21 @@ final class JuliaSplit {
         return layout != Layout.SINGLE;
     }
 
+    /** Gives the Mandelbrot pane the iteration limit the main canvas uses, while the split is showing. */
+    void syncIterations() {
+        if (isActive()) {
+            copyIterations();
+        }
+    }
+
+    private void copyIterations() {
+        RenderSettings settings = picker.getRenderSettings();
+        int iterations = julia.getRenderSettings().maxIterations();
+        if (settings.maxIterations() != iterations) {
+            picker.setRenderSettings(settings.withMaxIterations(iterations));
+        }
+    }
+
     /** What the Mandelbrot pane shows, so the Mandelbrot view can carry on from it when the split closes. */
     Viewport pickerViewport() {
         return picker.getCurrentViewport();
@@ -161,6 +176,7 @@ final class JuliaSplit {
         }
         if (on) {
             locked = true;
+            copyIterations();
             showSplit();
             SwingUtilities.invokeLater(() -> {
                 split.setDividerLocation(0.5);

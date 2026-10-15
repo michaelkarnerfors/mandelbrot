@@ -11,6 +11,16 @@ import se.karnerfors.mandelbrot.math.Complex;
  */
 public record RenderSettings(int maxIterations, double escapeRadius, int supersampleFactor, RenderAlgorithm algorithm, Complex c) {
 
+    /** The fewest and the most iterations a point is given before it counts as inside the set. */
+    public static final int MIN_ITERATIONS = 10;
+    public static final int MAX_ITERATIONS = 100_000;
+    public static final int DEFAULT_ITERATIONS = 1000;
+
+    /** A value read from a file or typed in, made safe: the nearest number in the allowed range. */
+    public static int validMaxIterations(int value) {
+        return Math.max(MIN_ITERATIONS, Math.min(MAX_ITERATIONS, value));
+    }
+
     /** The supersample factors on offer, per axis, lightest first. */
     public static final List<Integer> SUPERSAMPLE_FACTORS = List.of(1, 2, 3, 4, 6, 8);
 
@@ -34,7 +44,13 @@ public record RenderSettings(int maxIterations, double escapeRadius, int supersa
     }
 
     public static RenderSettings defaults() {
-        return new RenderSettings(1000, 256.0, 1, RenderAlgorithm.MANDELBROT, JuliaPreset.DOUADY_RABBIT.c());
+        return new RenderSettings(DEFAULT_ITERATIONS, 256.0, 1, RenderAlgorithm.MANDELBROT,
+                JuliaPreset.DOUADY_RABBIT.c());
+    }
+
+    /** These settings with {@code iterations} (made safe by {@link #validMaxIterations}) as the iteration limit. */
+    public RenderSettings withMaxIterations(int iterations) {
+        return new RenderSettings(validMaxIterations(iterations), escapeRadius, supersampleFactor, algorithm, c);
     }
 
     public RenderSettings withSupersampleFactor(int factor) {

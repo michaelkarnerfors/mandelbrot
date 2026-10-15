@@ -6,7 +6,7 @@ How to use the explorer. For building and running it, see the [README](../README
 
 ![The explorer in split view with the Render dialog open](../Screenshot.png)
 
-A top bar with the controls, the fractal in the middle, and a status bar underneath. The status bar shows the coordinate under the pointer, the zoom, the render status, the render queue chip, **Go to…** and the theme button (sun/moon).
+A top bar with the controls, the fractal in the middle, and a status bar underneath. The status bar shows the coordinate under the pointer, the zoom, the iteration limit (click to change it), the render status, the render queue chip, **Go to…** and the theme button (sun/moon).
 
 ## Moving around
 
@@ -30,6 +30,15 @@ Changing the palette recolours the view from the samples it already has, then re
 
 The window keeps every sample so palette changes are quick, which costs memory on busy views at high settings: 8×8 on a large window can need over 1 GB of Java heap. A warning appears next to the control when the chosen setting would take a large share of the heap, and if memory runs out the preview stays on screen. Start Java with a larger `-Xmx` to go higher.
 
+## Quality: max iterations
+
+Each point gets a limited number of steps before it counts as inside the set. More iterations show finer detail near the edge and deep in, and need more of them the further you zoom; fewer draw faster. The **Iterations** chip in the status bar, next to the zoom, shows the limit and opens its editor above it:
+
+- a logarithmic **slider** from 10 to 100000, with the view redrawing as you drag;
+- a **field** for an exact whole number. The slider follows what you type; Enter, leaving the field or closing the editor applies it. A number outside 10 to 100000 is moved to the nearest end, and only digits are accepted.
+
+The limit is remembered between runs, and saved with bookmarks and in the view inside rendered pictures (as `maxIterations`), so opening a bookmark or rendering a picture again uses the limit it was made with. Files from before this setting existed read as 1000. In the split view both panes use the same limit.
+
 ## Palettes
 
 The **Palette** button opens a menu of built-in palettes (Classic, Ocean, Ember, Mint, Violet) and your own. Picking one applies it at once.
@@ -42,7 +51,7 @@ The **Palette** button opens a menu of built-in palettes (Classic, Ocean, Ember,
 
 **Bookmarks** opens a grid of saved places, each with a thumbnail, a name and where it is.
 
-- **Add view** bookmarks what is on screen (fractal, Julia constant, position, zoom, palette) and lets you name it at once.
+- **Add view** bookmarks what is on screen (fractal, Julia constant, max iterations, position, zoom, palette) and lets you name it at once.
 - Click a card to go there.
 - Hover a card to rename it, export it as a JSON file or delete it.
 - Filter by name with the field on top.
@@ -124,6 +133,7 @@ Without arguments the jar opens the window instead. JVM options such as `-Xmx` g
 | `--window WxH` | The window size the view's zoom refers to. Default 1100x700, the app's default canvas. The picture frames the same area as that window, like the Render dialog. |
 | `--fractal`, `--c` | Override the fractal (`mandelbrot` or `julia`) and the Julia constant (`-0.8,0.156` or `-0.8+0.156i`). |
 | `--re`, `--im`, `--zoom` | Override the centre and zoom of the view. |
+| `--iterations N` | The most iterations a point gets, 10 to 100000. Default: the input's `maxIterations`, or 1000 if it has none. |
 | `--shift N` | Move the palette's colours N shades along its cycle (negative moves the other way). |
 | `--threads N` | Worker threads. Default: all processors. |
 | `-s`, `--silent` | Print nothing on success. Errors still go to stderr. |

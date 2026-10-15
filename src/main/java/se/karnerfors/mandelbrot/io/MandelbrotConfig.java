@@ -80,9 +80,9 @@ public record MandelbrotConfig(int version, ViewportData viewport, PaletteData p
                 FractalData.from(settings));
     }
 
-    /** {@code base} with this config's fractal and Julia c swapped in (iterations, supersampling etc. are kept). */
+    /** {@code base} with this config's fractal, Julia c and iteration limit swapped in (supersampling etc. are kept). */
     public RenderSettings applyTo(RenderSettings base) {
-        return base.withAlgorithm(fractal.algorithm()).withC(fractal.c());
+        return base.withAlgorithm(fractal.algorithm()).withC(fractal.c()).withMaxIterations(fractal.maxIterations());
     }
 
     /** Reconstructs a Viewport at this config's center/zoom, sized to {@code width}x{@code height}. */
@@ -95,21 +95,26 @@ public record MandelbrotConfig(int version, ViewportData viewport, PaletteData p
         return palette.toPalette();
     }
 
-    /** Which fractal is rendered and, for Julia, its constant c (kept for Mandelbrot too, so switching back and forth is lossless). */
-    public record FractalData(RenderAlgorithm algorithm, double cReal, double cImaginary) {
+    /**
+     * Which fractal is rendered and, for Julia, its constant c (kept for Mandelbrot too, so switching back and forth is lossless).
+     */
+    public record FractalData(RenderAlgorithm algorithm, double cReal, double cImaginary, int maxIterations) {
         public FractalData {
             if (algorithm == null) {
                 algorithm = RenderAlgorithm.MANDELBROT;
             }
+            maxIterations = maxIterations == 0 ? RenderSettings.DEFAULT_ITERATIONS
+                    : RenderSettings.validMaxIterations(maxIterations);
         }
 
         static FractalData mandelbrot() {
             Complex c = JuliaPreset.DOUADY_RABBIT.c();
-            return new FractalData(RenderAlgorithm.MANDELBROT, c.real, c.imaginary);
+            return new FractalData(RenderAlgorithm.MANDELBROT, c.real, c.imaginary, RenderSettings.DEFAULT_ITERATIONS);
         }
 
         static FractalData from(RenderSettings settings) {
-            return new FractalData(settings.algorithm(), settings.c().real, settings.c().imaginary);
+            return new FractalData(settings.algorithm(), settings.c().real, settings.c().imaginary,
+                    settings.maxIterations());
         }
 
         Complex c() {

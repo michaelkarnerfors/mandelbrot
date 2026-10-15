@@ -72,6 +72,7 @@ public final class MandelbrotCli {
               --c RE,IM            the Julia constant, e.g. -0.8,0.156 or -0.8+0.156i
               --re X --im Y        centre of the view
               --zoom Z             zoom, in terms of --window
+              --iterations N       the most iterations a point gets, 10 to 100000 (default: from the input, else 1000)
               --shift N            move the palette's colours N entries along its cycle (stops x shades; may be negative)
               --threads N          worker threads (default: all processors)
               -s, --silent         print nothing on success (errors still go to stderr); use the exit status
@@ -92,7 +93,8 @@ public final class MandelbrotCli {
 
     /** What the command line asked for. Null means "not given: use the input's own value". */
     record Options(File input, String bookmark, File output, int[] size, Integer samples, int[] window, RenderAlgorithm fractal,
-            Complex c, Double re, Double im, Double zoom, Integer shift, Integer threads, boolean silent, boolean help) {
+            Complex c, Double re, Double im, Double zoom, Integer iterations, Integer shift, Integer threads, boolean silent,
+            boolean help) {
     }
 
     private MandelbrotCli() {
@@ -151,6 +153,7 @@ public final class MandelbrotCli {
         Double re = null;
         Double im = null;
         Double zoom = null;
+        Integer iterations = null;
         Integer shift = null;
         Integer threads = null;
         boolean silent = false;
@@ -158,7 +161,8 @@ public final class MandelbrotCli {
             String arg = args[i];
             switch (arg) {
                 case "-h", "--help" -> {
-                    return new Options(null, null, null, null, null, null, null, null, null, null, null, null, null, false, true);
+                    return new Options(null, null, null, null, null, null, null, null, null, null, null, null, null, null, false,
+                            true);
                 }
                 case "-o", "--output" -> output = new File(value(args, ++i, arg));
                 case "-s", "--silent" -> silent = true;
@@ -169,6 +173,13 @@ public final class MandelbrotCli {
                     samples = integer(value(args, ++i, arg), arg);
                     if (!RenderSettings.SUPERSAMPLE_FACTORS.contains(samples)) {
                         throw new UsageException("--samples must be 1, 2, 3, 4, 6 or 8, not " + samples);
+                    }
+                }
+                case "--iterations" -> {
+                    iterations = integer(value(args, ++i, arg), arg);
+                    if (iterations < RenderSettings.MIN_ITERATIONS || iterations > RenderSettings.MAX_ITERATIONS) {
+                        throw new UsageException("--iterations must be between " + RenderSettings.MIN_ITERATIONS + " and "
+                                + RenderSettings.MAX_ITERATIONS + ", not " + iterations);
                     }
                 }
                 case "--shift" -> shift = integer(value(args, ++i, arg), arg);
@@ -203,7 +214,8 @@ public final class MandelbrotCli {
         if (input == null) {
             throw new UsageException("no input: give a bookmark or view file (.json), or a .png made by this app");
         }
-        return new Options(input, bookmark, output, size, samples, window, fractal, c, re, im, zoom, shift, threads, silent, false);
+        return new Options(input, bookmark, output, size, samples, window, fractal, c, re, im, zoom, iterations, shift, threads,
+                silent, false);
     }
 
     private static String value(String[] args, int index, String option) throws UsageException {
@@ -302,6 +314,7 @@ public final class MandelbrotCli {
         Complex centre = Complex.fromCartesian(re, im);
         Viewport target = new Viewport(centre, zoom * scale, size[0], size[1]);
         RenderSettings settings = RenderSettings.defaults().withAlgorithm(algorithm).withC(c)
+                .withMaxIterations(o.iterations() != null ? o.iterations() : f.maxIterations())
                 .withSupersampleFactor(samples);
         Palette palette = view.toPalette();
         if (o.shift() != null) {

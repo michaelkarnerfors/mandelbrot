@@ -19,16 +19,19 @@ import se.karnerfors.mandelbrot.ui.Theme.Token;
 
 /**
  * The bar under the canvas: interaction hint, the coordinate under the cursor, the zoom,
- * Go to..., the render status chip and the light/dark switch.
+ * the iteration limit, Go to..., the render status chip and the light/dark switch.
  */
 public final class StatusBar extends JPanel {
 
     private static final long serialVersionUID = 1L;
 
     private static final int HEIGHT = 28;
-    private static final int HIDE_HINT_BELOW = 880;
+    /** Below this width the hint goes, to make room for the readouts (it was 880 before the Iterations chip, about 150 wide). */
+    private static final int HIDE_HINT_BELOW = 1030;
 
     public final AppButton goTo = new AppButton("Go to…", null, AppButton.Style.OUTLINE, true);
+    /** The iteration limit; click to edit it. */
+    public final IterationsChip iterations = new IterationsChip();
     public final AppButton themeToggle;
     public final QueueChip queue = new QueueChip();
     private final StatusChip chip = new StatusChip();
@@ -61,6 +64,10 @@ public final class StatusBar extends JPanel {
         add(center(label("Zoom")));
         add(Box.createHorizontalStrut(5));
         add(center(zoomValue));
+        add(Box.createHorizontalStrut(16));
+        add(center(label("Iterations")));
+        add(Box.createHorizontalStrut(5));
+        add(center(iterations));
         add(Box.createHorizontalStrut(12));
         add(center(goTo));
         add(Box.createHorizontalGlue());

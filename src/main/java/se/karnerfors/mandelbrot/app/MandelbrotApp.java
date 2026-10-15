@@ -38,6 +38,7 @@ import se.karnerfors.mandelbrot.render.RenderQueue;
 import se.karnerfors.mandelbrot.render.RenderSettings;
 import se.karnerfors.mandelbrot.ui.BookmarkPopover;
 import se.karnerfors.mandelbrot.ui.FractalPanel;
+import se.karnerfors.mandelbrot.ui.IterationsPopover;
 import se.karnerfors.mandelbrot.ui.JuliaPresetPopover;
 import se.karnerfors.mandelbrot.palette.Palette;
 import se.karnerfors.mandelbrot.ui.PaletteEditorPanel;
@@ -149,12 +150,33 @@ public class MandelbrotApp {
             boolean split = splitRef[0] != null && splitRef[0].isActive();
             topBar.showFractals(!julia || split, julia);
             updateChip.run();
+            statusBar.iterations.setValue(fractalPanel.getRenderSettings().maxIterations());
             if (splitRef[0] != null) {
                 splitRef[0].refresh();
+                splitRef[0].syncIterations();
             }
             updatePaletteLabel.run();
         };
         syncFractalControls.run();
+
+        // Max iterations: the chip in the status bar shows the limit and opens the editor above it.
+        IterationsPopover.Host iterationsHost = new IterationsPopover.Host() {
+            @Override
+            public int current() {
+                return fractalPanel.getRenderSettings().maxIterations();
+            }
+
+            @Override
+            public void apply(int iterations) {
+                fractalPanel.setRenderSettings(fractalPanel.getRenderSettings().withMaxIterations(iterations));
+                statusBar.iterations.setValue(iterations);
+                if (splitRef[0] != null) {
+                    splitRef[0].syncIterations();
+                }
+                recorder.markDirty();
+            }
+        };
+        statusBar.iterations.addActionListener(_ -> IterationsPopover.show(statusBar.iterations, iterationsHost));
 
         JuliaPresetPopover.Host juliaHost = new JuliaPresetPopover.Host() {
             @Override
