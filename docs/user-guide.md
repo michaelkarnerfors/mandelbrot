@@ -97,7 +97,7 @@ Switching either fractal off (or opening a Mandelbrot bookmark) closes the split
 
 In the dialog you choose:
 - the **size**: window size and multiples of it, or presets from 1024 px wide up to 8K in 4:3, 16:9 and 21:9;
-- the **quality** (the grid of samples behind each pixel, 1×1 to 8×8) and, at the right end of the same row, the **iterations** for this picture. The field starts at the window's limit; a different number, from 10 to 100000, is used for this picture only and is saved in it. The time estimate is shown only while the limit is the window's, since it was measured there;
+- the **quality** (the grid of samples behind each pixel, 1×1 to 8×8) and, at the right end of the same row, the **iterations** for this picture. The field starts at the window's limit; a different number, from 10 to 100000, is used for this picture only and is saved in it. The time estimate was measured at the window's limit and time does not scale in proportion to it, so while this field differs from the window's the footer says "time unknown" instead (it returns when they match again, for instance after **Sync to view**);
 - the **location**: Re, Im and zoom, prefilled from the view and editable. The zoom is shown to three digits (`233`, `1.23E9`), but the view's exact zoom is used until you change the field; hover over it to see the exact number;
 - the **file** and folder.
 

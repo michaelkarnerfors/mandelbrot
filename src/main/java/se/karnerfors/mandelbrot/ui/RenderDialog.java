@@ -281,7 +281,11 @@ public final class RenderDialog {
                     refreshEstimate();
                 }
             });
-            syncPoll = new javax.swing.Timer(400, _ -> refreshSync());
+            // The window may move on while the dialog is open, so the estimate is checked along with Sync.
+            syncPoll = new javax.swing.Timer(400, _ -> {
+                refreshSync();
+                refreshEstimate();
+            });
             syncPoll.start();
             dialog.addWindowListener(new java.awt.event.WindowAdapter() {
                 @Override
@@ -776,10 +780,17 @@ public final class RenderDialog {
             long pixels = (long) r.width() * r.height();
             StringBuilder text = new StringBuilder();
             OptionalDouble perSample = host.secondsPerSample();
-            // The measured time per sample is for the window's iteration limit; a different one makes it a guess.
+            // The measured time per sample is for the window's iteration limit. Time does not scale in proportion to
+            // the limit, so for a different one there is no estimate until the window has settled at it.
             Integer typed = typedIterations();
-            boolean sameLimit = typed == null || typed == host.view().fractal().maxIterations();
-            if (perSample.isPresent() && sameLimit) {
+            int windowLimit = host.view().fractal().maxIterations();
+            boolean sameLimit = typed == null || typed == windowLimit;
+            String tooltip = null;
+            if (!sameLimit) {
+                text.append("time unknown · ");
+                tooltip = "Drawing time was measured at the window's " + windowLimit + " iterations. It does not scale in "
+                        + "proportion to the limit, so there is no estimate for " + typed + ".";
+            } else if (perSample.isPresent()) {
                 double samplesPerPixel = factor() == 1 ? 1 : 1 + host.refinedShare() * factor() * factor();
                 double seconds = perSample.getAsDouble() * pixels * samplesPerPixel;
                 text.append("≈ ").append(RenderQueue.formatDuration((long) (seconds * 1000))).append(" · ");
@@ -790,11 +801,13 @@ public final class RenderDialog {
             boolean heavy = need > heap * 0.35;
             if (heavy) {
                 text.append(" · heavy, about ").append(formatBytes(need)).append(" of memory");
+                String memory = String.format(Locale.ROOT,
+                        "Java may use up to %s. If memory runs out, the job fails and offers a lighter retry.",
+                        formatBytes(heap));
+                tooltip = tooltip == null ? memory : tooltip + " " + memory;
             }
             estimate.setText(text.toString());
-            estimate.setToolTipText(heavy ? String.format(Locale.ROOT,
-                    "Java may use up to %s. If memory runs out, the job fails and offers a lighter retry.",
-                    formatBytes(heap)) : null);
+            estimate.setToolTipText(tooltip);
         }
 
         private void add() {
