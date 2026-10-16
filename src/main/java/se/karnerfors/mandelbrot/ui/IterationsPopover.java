@@ -302,8 +302,11 @@ public final class IterationsPopover {
         }
     }
 
-    /** Lets only digits into the field, up to the length of the highest limit; pasted text such as "1,000" is cleaned. */
-    private static final class DigitsOnly extends DocumentFilter {
+    /**
+     * Lets only digits into a field, up to the length of the highest limit; pasted text such as "1,000" is cleaned.
+     * Shared with the Render dialog's iterations field.
+     */
+    static final class DigitsOnly extends DocumentFilter {
         @Override
         public void insertString(FilterBypass bypass, int offset, String text, AttributeSet attributes)
                 throws BadLocationException {

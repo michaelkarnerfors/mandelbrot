@@ -71,7 +71,7 @@ public final class MandelbrotCli {
               --fractal NAME       mandelbrot or julia (default: from the input)
               --c RE,IM            the Julia constant, e.g. -0.8,0.156 or -0.8+0.156i
               --re X --im Y        centre of the view
-              --zoom Z             zoom, in terms of --window
+              --zoom Z             zoom, in terms of --window (at least 100)
               --iterations N       the most iterations a point gets, 10 to 100000 (default: from the input, else 1000)
               --shift N            move the palette's colours N entries along its cycle (stops x shades; may be negative)
               --threads N          worker threads (default: all processors)
@@ -195,8 +195,8 @@ public final class MandelbrotCli {
                 case "--im" -> im = number(value(args, ++i, arg), arg);
                 case "--zoom" -> {
                     zoom = number(value(args, ++i, arg), arg);
-                    if (zoom <= 0) {
-                        throw new UsageException("--zoom must be positive");
+                    if (zoom < Viewport.MIN_USER_ZOOM) {
+                        throw new UsageException("--zoom must be at least " + (int) Viewport.MIN_USER_ZOOM);
                     }
                 }
                 default -> {

@@ -261,7 +261,8 @@ public final class FractalPanel extends JPanel {
 
         addMouseWheelListener(e -> {
             stopRefinement();
-            double factor = Math.pow(WHEEL_ZOOM_STEP, -e.getPreciseWheelRotation());
+            double factor = Viewport.limitZoomOut(currentViewport.zoom(),
+                    Math.pow(WHEEL_ZOOM_STEP, -e.getPreciseWheelRotation()));
             currentViewport = currentViewport.zoomedAround(e.getX(), e.getY(), factor);
             notifyViewportChanged();
             repaint();

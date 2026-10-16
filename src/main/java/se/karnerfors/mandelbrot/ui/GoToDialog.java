@@ -22,6 +22,7 @@ import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 
 import se.karnerfors.mandelbrot.math.Complex;
+import se.karnerfors.mandelbrot.math.Viewport;
 import se.karnerfors.mandelbrot.ui.Theme.Token;
 
 /**
@@ -116,8 +117,8 @@ public final class GoToDialog {
                 double r = parseNumber(re.getText());
                 double i = parseNumber(im.getText());
                 double z = parseNumber(zm.getText());
-                if (z <= 0) {
-                    error.setText("Zoom must be greater than zero.");
+                if (z < Viewport.MIN_USER_ZOOM) {
+                    error.setText("Zoom must be at least " + (int) Viewport.MIN_USER_ZOOM + ".");
                     return;
                 }
                 dialog.dispose();

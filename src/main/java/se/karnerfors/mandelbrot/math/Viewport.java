@@ -4,6 +4,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 public final class Viewport {
 
+    /**
+     * The lowest zoom (pixels per unit) you can navigate or type your way to: below it the whole set is a speck.
+     * A Viewport itself accepts less, because fitting the set into a thumbnail or a narrow pane needs it.
+     */
+    public static final double MIN_USER_ZOOM = 100.0;
+
     private static final double MIN_ZOOM = 1.0e-2;
     private static final double MAX_ZOOM = 1.0e13;
     private static final ObjectMapper JSON = new ObjectMapper();
@@ -90,6 +96,15 @@ public final class Viewport {
         double newCenterReal = center.real - dxPixels / zoom;
         double newCenterImaginary = center.imaginary - dyPixels / zoom;
         return new Viewport(Complex.fromCartesian(newCenterReal, newCenterImaginary), zoom, width, height);
+    }
+
+    /**
+     * The factor to zoom a view at {@code zoom} by when the user asks for {@code factor}: a zoom out stops at
+     * {@link #MIN_USER_ZOOM}, and never pulls up a view that is already below it (a narrow pane's home view).
+     */
+    public static double limitZoomOut(double zoom, double factor) {
+        double floor = Math.min(zoom, MIN_USER_ZOOM);
+        return zoom * factor < floor ? floor / zoom : factor;
     }
 
     private static double clampZoom(double zoom) {

@@ -12,6 +12,9 @@ import java.awt.event.KeyEvent;
 import java.awt.geom.RoundRectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.File;
+import java.math.BigDecimal;
+import java.math.MathContext;
+import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -30,9 +33,11 @@ import javax.swing.KeyStroke;
 import javax.swing.border.EmptyBorder;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
+import javax.swing.text.AbstractDocument;
 
 import se.karnerfors.mandelbrot.io.MandelbrotConfig;
 import se.karnerfors.mandelbrot.io.SessionState.ExportData;
+import se.karnerfors.mandelbrot.math.Viewport;
 import se.karnerfors.mandelbrot.palette.Palette;
 import se.karnerfors.mandelbrot.render.AdaptiveSampler;
 import se.karnerfors.mandelbrot.render.ImageExporter;
@@ -48,7 +53,7 @@ import se.karnerfors.mandelbrot.ui.Theme.Token;
  * settings are taken when it opens.
  *
  * <p>The picture frames the same area as the window does, drawn on a bigger canvas. Re, Im and Zoom are in the
- * window's own terms (the zoom shown in the status bar), so "Sync to current view" and a hand-typed place
+ * window's own terms (the zoom shown in the status bar), so "Sync to view" and a hand-typed place
  * mean the same thing as everywhere else in the app.
  */
 public final class RenderDialog {
@@ -117,7 +122,8 @@ public final class RenderDialog {
         }
     }
 
-    private static final int WIDTH = 480;
+    /** Wide enough for Re and Im to show 17 digits beside the zoom and the sync button. */
+    private static final int WIDTH = 560;
     private static final int MAX_SIDE = 16384;
 
     private RenderDialog() {
@@ -165,6 +171,7 @@ public final class RenderDialog {
         private final JTextField reField = new JTextField();
         private final JTextField imField = new JTextField();
         private final JTextField zoomField = new JTextField();
+        private final JTextField iterationsField = new JTextField(6);
         private final JTextField folderField = new JTextField();
         private final JTextField nameField = new JTextField();
         private final ThemedLabel suggested = new ThemedLabel("Suggested", Token.MUTED, () -> Theme.sansMedium(11f));
@@ -222,6 +229,7 @@ public final class RenderDialog {
 
             // initial values
             fillLocation();
+            fillIterations();
             fillResolutions(initialAspect, saved);
             File folder = host.defaultFolder();
             if (saved != null && saved.outputFile() != null && !saved.outputFile().isBlank()) {
@@ -236,7 +244,7 @@ public final class RenderDialog {
             suggestName();
             refreshEstimate();
 
-            // "Sync to current view" is only live when the window has moved on or the place was typed over.
+            // "Sync to view" is only live when the window has moved on or the place was typed over.
             DocumentListener locationEdits = new DocumentListener() {
                 @Override
                 public void insertUpdate(DocumentEvent e) {
@@ -253,9 +261,26 @@ public final class RenderDialog {
                     refreshSync();
                 }
             };
-            for (JTextField f : new JTextField[] { reField, imField, zoomField }) {
+            for (JTextField f : new JTextField[] { reField, imField, zoomField, iterationsField }) {
                 f.getDocument().addDocumentListener(locationEdits);
             }
+            // The time estimate only holds for the iteration limit it was measured at.
+            iterationsField.getDocument().addDocumentListener(new DocumentListener() {
+                @Override
+                public void insertUpdate(DocumentEvent e) {
+                    refreshEstimate();
+                }
+
+                @Override
+                public void removeUpdate(DocumentEvent e) {
+                    refreshEstimate();
+                }
+
+                @Override
+                public void changedUpdate(DocumentEvent e) {
+                    refreshEstimate();
+                }
+            });
             syncPoll = new javax.swing.Timer(400, _ -> refreshSync());
             syncPoll.start();
             dialog.addWindowListener(new java.awt.event.WindowAdapter() {
@@ -271,10 +296,13 @@ public final class RenderDialog {
             MandelbrotConfig.ViewportData v = view.viewport();
             if (!reField.getText().trim().equals(Double.toString(v.real()))
                     || !imField.getText().trim().equals(Double.toString(v.imaginary()))
-                    || !zoomField.getText().trim().equals(Double.toString(v.zoom()))) {
+                    || !zoomUntouched()) {
                 return true;
             }
             Dimension size = host.windowSize();
+            if (!iterationsField.getText().trim().equals(Integer.toString(view.fractal().maxIterations()))) {
+                return true;
+            }
             return !host.view().equals(view) || size.width != windowW || size.height != windowH
                     || !host.paletteLabel().equals(paletteLabel);
         }
@@ -349,11 +377,44 @@ public final class RenderDialog {
         }
 
         private JComponent factorSection() {
-            JPanel box = section("Super-sampling");
+            JPanel box = section(null);
+            // The titles share a row: "Iterations" is the caption of the field at the right end of the control's row.
+            JPanel head = new JPanel();
+            head.setLayout(new BoxLayout(head, BoxLayout.X_AXIS));
+            head.setOpaque(false);
+            head.setAlignmentX(Component.LEFT_ALIGNMENT);
+            head.add(label("Super-sampling"));
+            head.add(Box.createHorizontalGlue());
+            head.add(label("Iterations"));
+            box.add(head);
+            box.add(gap(5));
             // The note goes underneath: with six steps the control leaves no room beside it.
             factorControl.setAlignmentX(Component.LEFT_ALIGNMENT);
             factorNote.setAlignmentX(Component.LEFT_ALIGNMENT);
-            box.add(factorControl);
+            JPanel row = new JPanel();
+            row.setLayout(new BoxLayout(row, BoxLayout.X_AXIS));
+            row.setOpaque(false);
+            row.setAlignmentX(Component.LEFT_ALIGNMENT);
+            iterationsField.setFont(Theme.mono(12f));
+            iterationsField.setHorizontalAlignment(JTextField.RIGHT);
+            iterationsField.setMaximumSize(iterationsField.getPreferredSize());
+            iterationsField.setToolTipText("<html>The most iterations a point gets in this picture, "
+                    + RenderSettings.MIN_ITERATIONS + " to " + RenderSettings.MAX_ITERATIONS + ".<br>"
+                    + "It starts at the window's setting.</html>");
+            iterationsField.getAccessibleContext().setAccessibleName("Max iterations");
+            ((AbstractDocument) iterationsField.getDocument()).setDocumentFilter(new IterationsPopover.DigitsOnly());
+            iterationsField.addFocusListener(new java.awt.event.FocusAdapter() {
+                @Override
+                public void focusLost(java.awt.event.FocusEvent e) {
+                    commitIterations();
+                }
+            });
+            factorControl.setAlignmentY(Component.CENTER_ALIGNMENT);
+            iterationsField.setAlignmentY(Component.CENTER_ALIGNMENT);
+            row.add(factorControl);
+            row.add(Box.createHorizontalGlue());
+            row.add(iterationsField);
+            box.add(row);
             box.add(gap(5));
             box.add(factorNote);
             factorNote.setText(host.remembered() != null ? "Remembered from last render" : "Grid of samples behind each pixel");
@@ -361,34 +422,49 @@ public final class RenderDialog {
         }
 
         private JComponent locationSection() {
-            JPanel box = section(null);
-            JPanel head = new JPanel();
-            head.setLayout(new BoxLayout(head, BoxLayout.X_AXIS));
-            head.setOpaque(false);
-            head.setAlignmentX(Component.LEFT_ALIGNMENT);
-            head.add(label("Location"));
-            head.add(Box.createHorizontalGlue());
-            syncButton = new AppButton("Sync to current view", null, AppButton.Style.GHOST, true);
+            JPanel box = section("Location");
+
+            // Re, Im and Zoom with their captions underneath, and the sync button at the end of the field row.
+            // Re and Im get the most room: they can hold 17 digits.
+            syncButton = new AppButton("Sync to view", null, AppButton.Style.OUTLINE, true);
             syncButton.setToolTipText("Take the view, palette and picture from the main window as they are now");
             syncButton.addActionListener(_ -> resetToCurrentView());
             syncButton.setEnabled(false);
-            head.add(syncButton);
-            box.add(head);
-            box.add(gap(2));
 
-            JPanel fields = new JPanel(new java.awt.GridLayout(2, 3, 8, 2));
+            JPanel fields = new JPanel(new java.awt.GridBagLayout());
             fields.setOpaque(false);
             fields.setAlignmentX(Component.LEFT_ALIGNMENT);
-            for (JTextField f : new JTextField[] { reField, imField, zoomField }) {
-                f.setFont(Theme.mono(12f));
-                fields.add(f);
+            JTextField[] inputs = { reField, imField, zoomField };
+            // The zoom is shown in at most seven characters, so it keeps its own width and Re and Im share the rest.
+            zoomField.setColumns(7);
+            reField.setColumns(20); // the same preferred width, so Re and Im come out equally wide
+            imField.setColumns(20);
+            double[] weights = { 1, 1, 0 };
+            String[] captions = { "Re", "Im", "Zoom" };
+            for (int i = 0; i < inputs.length; i++) {
+                inputs[i].setFont(Theme.mono(12f));
+                java.awt.GridBagConstraints field = new java.awt.GridBagConstraints();
+                field.gridx = i;
+                field.gridy = 0;
+                field.weightx = weights[i];
+                field.fill = java.awt.GridBagConstraints.HORIZONTAL;
+                field.insets = new java.awt.Insets(0, 0, 2, 8);
+                fields.add(inputs[i], field);
+
+                java.awt.GridBagConstraints caption = new java.awt.GridBagConstraints();
+                caption.gridx = i;
+                caption.gridy = 1;
+                caption.anchor = java.awt.GridBagConstraints.LINE_START;
+                fields.add(new ThemedLabel(captions[i], Token.MUTED, () -> Theme.sans(11.5f)), caption);
             }
+            java.awt.GridBagConstraints button = new java.awt.GridBagConstraints();
+            button.gridx = inputs.length;
+            button.gridy = 0;
+            button.insets = new java.awt.Insets(0, 0, 2, 0);
+            fields.add(syncButton, button);
             reField.getAccessibleContext().setAccessibleName("Re");
             imField.getAccessibleContext().setAccessibleName("Im");
             zoomField.getAccessibleContext().setAccessibleName("Zoom");
-            for (String caption : new String[] { "Re", "Im", "Zoom" }) {
-                fields.add(new ThemedLabel(caption, Token.MUTED, () -> Theme.sans(11.5f)));
-            }
             box.add(fields);
             return box;
         }
@@ -523,6 +599,7 @@ public final class RenderDialog {
             paletteStrip.setGradient(host.palette().gradient());
             paletteName.setText(paletteLabel);
             fillLocation();
+            fillIterations();
             // The window-size choices depend on the window's size, and the file name on the fractal.
             Aspect aspect = aspectControl.getSelected();
             if (aspect == Aspect.WINDOW) {
@@ -548,7 +625,34 @@ public final class RenderDialog {
             MandelbrotConfig.ViewportData v = view.viewport();
             reField.setText(Double.toString(v.real()));
             imField.setText(Double.toString(v.imaginary()));
-            zoomField.setText(Double.toString(v.zoom()));
+            zoomField.setText(formatZoom(v.zoom()));
+            zoomField.setToolTipText("<html>Pixels per unit, at least " + (int) Viewport.MIN_USER_ZOOM + ". Shown to three digits;"
+                    + "<br>the exact zoom (" + Double.toString(v.zoom()) + ") is used until you change it.</html>");
+        }
+
+        /** True while the zoom field still shows the (rounded) zoom of the view, so the exact zoom is the one to use. */
+        private boolean zoomUntouched() {
+            return zoomField.getText().trim().equals(formatZoom(view.viewport().zoom()));
+        }
+
+        private void fillIterations() {
+            iterationsField.setText(Integer.toString(view.fractal().maxIterations()));
+        }
+
+        /** The limit typed in the field, or null while it is empty. It may still be outside the allowed range. */
+        private Integer typedIterations() {
+            String digits = iterationsField.getText().trim();
+            return digits.isEmpty() ? null : Integer.valueOf(digits); // the field only takes up to six digits
+        }
+
+        /** Tidies the field: an empty one goes back to the view's limit, a number outside the range moves into it. */
+        private int commitIterations() {
+            Integer typed = typedIterations();
+            int limit = typed == null ? view.fractal().maxIterations() : RenderSettings.validMaxIterations(typed);
+            if (typed == null || typed != limit) {
+                iterationsField.setText(Integer.toString(limit));
+            }
+            return limit;
         }
 
         private void fillResolutions(Aspect aspect, ExportData saved) {
@@ -672,7 +776,10 @@ public final class RenderDialog {
             long pixels = (long) r.width() * r.height();
             StringBuilder text = new StringBuilder();
             OptionalDouble perSample = host.secondsPerSample();
-            if (perSample.isPresent()) {
+            // The measured time per sample is for the window's iteration limit; a different one makes it a guess.
+            Integer typed = typedIterations();
+            boolean sameLimit = typed == null || typed == host.view().fractal().maxIterations();
+            if (perSample.isPresent() && sameLimit) {
                 double samplesPerPixel = factor() == 1 ? 1 : 1 + host.refinedShare() * factor() * factor();
                 double seconds = perSample.getAsDouble() * pixels * samplesPerPixel;
                 text.append("≈ ").append(RenderQueue.formatDuration((long) (seconds * 1000))).append(" · ");
@@ -694,12 +801,14 @@ public final class RenderDialog {
             Res r = resolution();
             Double re = number(reField, "Re");
             Double im = re == null ? null : number(imField, "Im");
-            Double zoom = im == null ? null : number(zoomField, "Zoom");
+            // The field shows the zoom rounded; unless it was edited, the exact zoom of the view is what is drawn.
+            Double zoom = im == null ? null : zoomUntouched() ? Double.valueOf(view.viewport().zoom()) : number(zoomField, "Zoom");
             if (zoom == null) {
                 return;
             }
-            if (zoom <= 0) {
-                warn("Zoom must be greater than zero.", "Invalid value");
+            if (zoom < Viewport.MIN_USER_ZOOM && !zoomUntouched()) {
+                warn("Zoom must be at least " + (int) Viewport.MIN_USER_ZOOM + ".", "Invalid value");
+                zoomField.requestFocusInWindow();
                 return;
             }
             if (r.width() > MAX_SIDE || r.height() > MAX_SIDE) {
@@ -723,8 +832,11 @@ public final class RenderDialog {
                     "Replace file?", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE) != JOptionPane.YES_OPTION) {
                 return;
             }
+            MandelbrotConfig.FractalData fractal = view.fractal();
             MandelbrotConfig frozen = new MandelbrotConfig(MandelbrotConfig.CURRENT_VERSION,
-                    new MandelbrotConfig.ViewportData(re, im, zoom), view.palette(), view.fractal());
+                    new MandelbrotConfig.ViewportData(re, im, zoom), view.palette(),
+                    new MandelbrotConfig.FractalData(fractal.algorithm(), fractal.cReal(), fractal.cImaginary(),
+                            commitIterations()));
             double scale = Math.min(r.width() / (double) windowW, r.height() / (double) windowH);
             BufferedImage thumb = se.karnerfors.mandelbrot.io.Thumbnails.cover(snapshot, 128, 84);
             Request request = new Request(frozen, host.paletteLabel(), scale, r.width(), r.height(), factor(), file, thumb);
@@ -762,6 +874,23 @@ public final class RenderDialog {
         long perTile = IterationGrid.estimatedBytes(withMargin, withMargin)
                 + (factor > 1 ? IterationGrid.estimatedBytes(tile * tile, (long) factor * factor) : 0);
         return image + perTile * Math.max(1, Runtime.getRuntime().availableProcessors());
+    }
+
+    /**
+     * A zoom for the Zoom field: three significant digits, plain up to five digits ({@code 233}, {@code 12.3},
+     * {@code 12300}) and scientific beyond ({@code 1.23E9}, at most seven characters up to the highest zoom).
+     * It is for looking at: the exact zoom stays behind it until the field is edited.
+     */
+    static String formatZoom(double zoom) {
+        BigDecimal rounded = new BigDecimal(zoom).round(new MathContext(3, RoundingMode.HALF_UP));
+        if (rounded.compareTo(BigDecimal.valueOf(100_000)) < 0) {
+            return rounded.stripTrailingZeros().toPlainString();
+        }
+        String digits = rounded.unscaledValue().toString();
+        int exponent = rounded.precision() - rounded.scale() - 1;
+        String mantissa = digits.charAt(0) + "." + digits.substring(1);
+        mantissa = mantissa.replaceAll("\\.?0+$", "");
+        return mantissa + "E" + exponent;
     }
 
     static String formatBytes(long bytes) {

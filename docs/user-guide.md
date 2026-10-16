@@ -16,7 +16,7 @@ A top bar with the controls, the fractal in the middle, and a status bar underne
 - **Home** shows the whole set. **Back** steps back through your positions. It does not undo switching between Mandelbrot and Julia.
 - **Go to…** centres on exact coordinates. Type Re, Im and zoom, or paste a complex number such as `-0.7436 + 0.1318i` into Re and both fields fill in.
 
-Zoom is limited to roughly 0.01 to 10¹³. The maths is plain double precision, so a very deep zoom turns blocky long before the upper limit.
+Zoom is in pixels per unit and runs from 100 (the whole set is a small shape in the window; the wheel stops there, and Go to, the Render dialog and `--zoom` ask for at least 100) up to 10¹³. A view that fits a very narrow pane can start below 100, and the wheel does not pull it up. The maths is plain double precision, so a very deep zoom turns blocky long before the upper limit.
 
 ## Quality: super-sampling
 
@@ -37,7 +37,7 @@ Each point gets a limited number of steps before it counts as inside the set. Mo
 - a logarithmic **slider** from 10 to 100000, with the view redrawing as you drag;
 - a **field** for an exact whole number. The slider follows what you type; Enter, leaving the field or closing the editor applies it. A number outside 10 to 100000 is moved to the nearest end, and only digits are accepted.
 
-The limit is remembered between runs, and saved with bookmarks and in the view inside rendered pictures (as `maxIterations`), so opening a bookmark or rendering a picture again uses the limit it was made with. Files from before this setting existed read as 1000. In the split view both panes use the same limit.
+The limit is remembered between runs, and saved with bookmarks and in the view inside rendered pictures (as `maxIterations`), so opening a bookmark or rendering a picture again uses the limit it was made with. The Render dialog has its own iterations field for a picture that should use a different limit from the window. Files from before this setting existed read as 1000. In the split view both panes use the same limit.
 
 ## Palettes
 
@@ -97,11 +97,11 @@ Switching either fractal off (or opening a Mandelbrot bookmark) closes the split
 
 In the dialog you choose:
 - the **size**: window size and multiples of it, or presets from 1024 px wide up to 8K in 4:3, 16:9 and 21:9;
-- the **quality** (the grid of samples behind each pixel, 1×1 to 8×8);
-- the **location**: Re, Im and zoom, prefilled from the view and editable;
+- the **quality** (the grid of samples behind each pixel, 1×1 to 8×8) and, at the right end of the same row, the **iterations** for this picture. The field starts at the window's limit; a different number, from 10 to 100000, is used for this picture only and is saved in it. The time estimate is shown only while the limit is the window's, since it was measured there;
+- the **location**: Re, Im and zoom, prefilled from the view and editable. The zoom is shown to three digits (`233`, `1.23E9`), but the view's exact zoom is used until you change the field; hover over it to see the exact number;
 - the **file** and folder.
 
-**Sync to current view** takes the view, palette and picture from the main window again. It is enabled only when the dialog differs from the window: you edited the location, or the window has moved on since the dialog opened.
+**Sync to view**, the button at the end of the Re, Im and Zoom row, takes the view, palette and picture from the main window again. It is enabled only when the dialog differs from the window: you edited the location or the iterations, or the window has moved on since the dialog opened.
 
 When you add the job, the view, palette and settings are frozen, and the picture frames the same area as the window. Jobs are drawn one at a time at low priority, so the live view stays usable. Rendering to a file that already exists asks before replacing it.
 
@@ -132,7 +132,7 @@ Without arguments the jar opens the window instead. JVM options such as `-Xmx` g
 | `--samples N` | Supersampling per axis: 1, 2, 3, 4, 6 or 8 (a 3x3 grid is 9 samples per pixel). Default 2. |
 | `--window WxH` | The window size the view's zoom refers to. Default 1100x700, the app's default canvas. The picture frames the same area as that window, like the Render dialog. |
 | `--fractal`, `--c` | Override the fractal (`mandelbrot` or `julia`) and the Julia constant (`-0.8,0.156` or `-0.8+0.156i`). |
-| `--re`, `--im`, `--zoom` | Override the centre and zoom of the view. |
+| `--re`, `--im`, `--zoom` | Override the centre and zoom of the view. The zoom must be at least 100. |
 | `--iterations N` | The most iterations a point gets, 10 to 100000. Default: the input's `maxIterations`, or 1000 if it has none. |
 | `--shift N` | Move the palette's colours N shades along its cycle (negative moves the other way). |
 | `--threads N` | Worker threads. Default: all processors. |
